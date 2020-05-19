@@ -10,12 +10,12 @@ import scipy.interpolate as spi
 bug_fix_arc_dir = -1.0 if pygplates.Version.get_imported_version() < pygplates.Version(14) else 1.0
 
 
-# function that takes a netcdf grid, fills dummy values, then creates 
+# function that takes a netcdf grid, fills dummy values, then creates
 # an interpolator object that can be evaluated later at specified points
-def make_age_interpolator(grdfile,interp='Spherical'):
- 
+def make_age_interpolator(grdfile,interp='FlatEarth'):
+
     ds_disk = xr.open_dataset(grdfile)
-    
+
     data_array = ds_disk['z']
 
     coord_keys = data_array.coords.keys()
@@ -27,9 +27,9 @@ def make_age_interpolator(grdfile,interp='Spherical'):
     if gridX.max()>180.:
         index = np.where(gridX)>180.
         gridX = np.hstack
-        
+
     gridZ_filled = inpaint.fill_ndimage(gridZ)
-    
+
     # spherical interpolation
     # Note the not-ideal method for avoiding issues with points at the edges of the grid
     if interp is 'Spherical':
@@ -47,29 +47,29 @@ def make_age_interpolator(grdfile,interp='Spherical'):
 def getSubductionBoundarySections(topology_features,rotation_model,time):
 # given files to make topological polygons, returns the features of type 'MidOceanRidge'
 # and get the first and last point from each one, along with the plate pairs
-    
+
     subduction_boundary_sections = []
-    
+
     # Resolve our topological plate polygons (and deforming networks) to the current 'time'.
     # We generate both the resolved topology boundaries and the boundary sections between them.
     resolved_topologies = []
     shared_boundary_sections = []
     pygplates.resolve_topologies(topology_features, rotation_model, resolved_topologies, time, shared_boundary_sections)
-                    
+
     for shared_boundary_section in shared_boundary_sections:
-                
+
         if shared_boundary_section.get_feature().get_feature_type() == pygplates.FeatureType.create_gpml('SubductionZone'):
-                 
+
             for shared_sub_segment in shared_boundary_section.get_shared_sub_segments():
-                
+
                 subduction_boundary_sections.append(shared_sub_segment)
-                              
+
     return subduction_boundary_sections
 
 
 # Determine the overriding and subducting plates of the subduction shared sub-segment.
 def find_overriding_and_subducting_plates(subduction_shared_sub_segment, time):
-    
+
     # Get the subduction polarity of the nearest subducting line.
     subduction_polarity = subduction_shared_sub_segment.get_feature().get_enumeration(pygplates.PropertyName.gpml_subduction_polarity)
     if (not subduction_polarity) or (subduction_polarity == 'Unknown'):
@@ -89,7 +89,7 @@ def find_overriding_and_subducting_plates(subduction_shared_sub_segment, time):
 
     overriding_plate = None
     subducting_plate = None
-    
+
     geometry_reversal_flags = subduction_shared_sub_segment.get_sharing_resolved_topology_geometry_reversal_flags()
     for index in range(2):
 
@@ -116,19 +116,19 @@ def find_overriding_and_subducting_plates(subduction_shared_sub_segment, time):
                 overriding_plate = sharing_resolved_topology
             else:
                 subducting_plate = sharing_resolved_topology
-    
+
     if overriding_plate is None:
         print('Unable to find the overriding plate of the subducting shared sub-segment "{0}" at {1}Ma'.format(
             subduction_shared_sub_segment.get_feature().get_name(), time), file=sys.stderr)
         print('    both sharing topologies are on subducting side of subducting line.', file=sys.stderr)
         return
-    
+
     if subducting_plate is None:
         print('Unable to find the subducting plate of the subducting shared sub-segment "{0}" at {1}Ma'.format(
             subduction_shared_sub_segment.get_feature().get_name(), time), file=sys.stderr)
         print('    both sharing topologies are on overriding side of subducting line.', file=sys.stderr)
         return
-    
+
     return (overriding_plate, subducting_plate, subduction_polarity)
 
 
@@ -186,8 +186,8 @@ def warp_subduction_segment(tessellated_line,
         #        subducting_plate_id = 911
         if warped_time<=subducting_plate_disappearance_time:
             print('Using %0.2f to %0.2f Ma stage pole for plate %d' % (subducting_plate_disappearance_time+time_step, subducting_plate_disappearance_time, subducting_plate_id))
-            stage_rotation = rotation_model.get_rotation(subducting_plate_disappearance_time+time_step, 
-                                                         subducting_plate_id, 
+            stage_rotation = rotation_model.get_rotation(subducting_plate_disappearance_time+time_step,
+                                                         subducting_plate_id,
                                                          subducting_plate_disappearance_time)
 
         else:
@@ -220,10 +220,10 @@ def warp_subduction_segment(tessellated_line,
                     subducting_normal_reversal * segment.get_great_circle_normal())
         subducting_normals.append(None) # Imaginary segment after to last point.
 
-        # get vectors of normals and parallels for each segment, use these 
+        # get vectors of normals and parallels for each segment, use these
         # to get a normal and parallel at each point location
         normals = []
-        parallels = []            
+        parallels = []
         for point_index in range(len(points)):
             prev_normal = subducting_normals[point_index]
             next_normal = subducting_normals[point_index + 1]
@@ -244,7 +244,7 @@ def warp_subduction_segment(tessellated_line,
             normals.append(normal)
             parallels.append(parallel)
 
-        # iterate over each point to determine the incremented position 
+        # iterate over each point to determine the incremented position
         # based on plate motion and subduction dip
         warped_points = []
         warped_point_depths = []
@@ -297,7 +297,7 @@ def warp_subduction_segment(tessellated_line,
                         dip_stage_pole_x, dip_stage_pole_y, dip_stage_pole_z, normalise=True)
 
 
-            # Get angle that velocity will rotate seed point along great circle arc 
+            # Get angle that velocity will rotate seed point along great circle arc
             # over 'time_step' My (if velocity in Kms / My).
             dip_stage_angle_radians = velocity_dip.get_magnitude() * (
                     time_step / pygplates.Earth.mean_radius_in_kms)
@@ -312,7 +312,7 @@ def warp_subduction_segment(tessellated_line,
                 if stage_pole_angle_radians < 0:
                     dip_stage_angle_radians = -dip_stage_angle_radians
 
-            # get the stage rotation that describes the lateral motion of the 
+            # get the stage rotation that describes the lateral motion of the
             # point taking the dip into account
             dip_stage_rotation = pygplates.FiniteRotation(dip_stage_pole, dip_stage_angle_radians)
 
@@ -330,12 +330,12 @@ def warp_subduction_segment(tessellated_line,
         points = warped_points
         polyline = warped_polyline
         point_depths = warped_point_depths
-        
+
     return points, point_depths, polyline
 
 
 def write_subducted_slabs_to_xyz(output_filename,output_data):
-	
+
     with open(output_filename, 'w') as output_file:
         output_file.write('Long,Lat,Depth,AgeAtSubduction,TimeOfSubduction\n')
         for output_segment in output_data:
@@ -353,23 +353,23 @@ def write_subducted_slabs_to_xyz(output_filename,output_data):
 def getRidgeEndPoints(topology_features,rotation_model,time):
 # given files to make topological polygons, returns the features of type 'MidOceanRidge'
 # and get the first and last point from each one, along with the plate pairs
-    
+
     MorEndPointArrays = []
     MorEndPointGeometries = []
     MorPlatePairs = []
     subduction_boundary_sections = []
-    
+
     # Resolve our topological plate polygons (and deforming networks) to the current 'time'.
     # We generate both the resolved topology boundaries and the boundary sections between them.
     resolved_topologies = []
     shared_boundary_sections = []
     pygplates.resolve_topologies(topology_features, rotation_model, resolved_topologies, time, shared_boundary_sections)
-                    
+
     for shared_boundary_section in shared_boundary_sections:
         if shared_boundary_section.get_feature().get_feature_type() == pygplates.FeatureType.create_gpml('MidOceanRidge'):
-                 
+
             for shared_sub_segment in shared_boundary_section.get_shared_sub_segments():
-                
+
                 if len(shared_sub_segment.get_sharing_resolved_topologies())==2:
                     plate_pair = [shared_sub_segment.get_sharing_resolved_topologies()[0].get_feature().get_reconstruction_plate_id(),
                                   shared_sub_segment.get_sharing_resolved_topologies()[1].get_feature().get_reconstruction_plate_id()]
@@ -378,20 +378,20 @@ def getRidgeEndPoints(topology_features,rotation_model,time):
                 #print 'skipping bad topological segment....'
 
                 tmp = shared_sub_segment.get_geometry()
-                
+
                 MorEndPointArrays.append(tmp.to_lat_lon_array())
                 MorEndPointGeometries.append(pygplates.PointOnSphere(tmp.get_points()[0]))
                 MorEndPointGeometries.append(pygplates.PointOnSphere(tmp.get_points()[-1]))
                 MorPlatePairs.append(plate_pair)
                 MorPlatePairs.append(plate_pair)
-                
+
         elif shared_boundary_section.get_feature().get_feature_type() == pygplates.FeatureType.create_gpml('SubductionZone'):
-                 
+
             for shared_sub_segment in shared_boundary_section.get_shared_sub_segments():
-                
+
                 subduction_boundary_sections.append(shared_sub_segment)
-                
-                
+
+
     return MorEndPointArrays,MorEndPointGeometries,MorPlatePairs,subduction_boundary_sections
 
 
@@ -401,7 +401,7 @@ def getMor2szDistance2(MorEndPointGeometries,MorPlatePairs,subduction_boundary_s
 
     Mor2szDistance = []
     sz_opid = []
-    
+
     for MorPoint,PlatePair in zip(MorEndPointGeometries,MorPlatePairs):
 
         min_distance_to_all_features = np.radians(180)
@@ -424,7 +424,7 @@ def getMor2szDistance2(MorEndPointGeometries,MorPlatePairs,subduction_boundary_s
 
         Mor2szDistance.append(min_distance_to_all_features*pygplates.Earth.mean_radius_in_kms)
         sz_opid.append(opid)
-        
+
     return Mor2szDistance,sz_opid
 
 def track_point_to_present_day(seed_geometry,PlateID,rotation_model,start_time,end_time,time_step):
@@ -433,12 +433,12 @@ def track_point_to_present_day(seed_geometry,PlateID,rotation_model,start_time,e
 
     point_longitude = []
     point_latitude = []
-    
+
     for time in np.arange(start_time,end_time,-time_step):
-        
+
         stage_rotation = rotation_model.get_rotation(time-time_step, PlateID, time)
 
-        # use the stage rotation to reconstruct the tracked point from position at current time 
+        # use the stage rotation to reconstruct the tracked point from position at current time
         # to position at the next time step
         incremented_geometry = stage_rotation * seed_geometry
 
@@ -447,20 +447,20 @@ def track_point_to_present_day(seed_geometry,PlateID,rotation_model,start_time,e
 
         point_longitude.append(seed_geometry.to_lat_lon_point().get_longitude())
         point_latitude.append(seed_geometry.to_lat_lon_point().get_latitude())
-        
+
     return point_longitude,point_latitude
 
 
 def rotate_point_to_present_day(seed_geometry,PlateID,rotation_model,start_time):
 # Given a seed geometry at some time in the past, return the locations of this point
 # at present-day (only)
-   
+
     point_longitude = []
     point_latitude = []
-    
+
     stage_rotation = rotation_model.get_rotation(0, PlateID, time, anchor_plate_id=1)
 
-    # use the stage rotation to reconstruct the tracked point from position at current time 
+    # use the stage rotation to reconstruct the tracked point from position at current time
     # to position at the next time step
     incremented_geometry = stage_rotation * seed_geometry
 
@@ -469,11 +469,11 @@ def rotate_point_to_present_day(seed_geometry,PlateID,rotation_model,start_time)
 
     point_longitude.append(seed_geometry.to_lat_lon_point().get_longitude())
     point_latitude.append(seed_geometry.to_lat_lon_point().get_latitude())
-        
+
     return point_longitude,point_latitude
 
 def create_seed_point_feature(plat,plon,plate_id,conjugate_plate_id,time):
-# Create a gpml point feature given some attributes 
+# Create a gpml point feature given some attributes
 
     point = pygplates.PointOnSphere(plat,plon)
     point_feature = pygplates.Feature()
@@ -482,6 +482,5 @@ def create_seed_point_feature(plat,plon,plate_id,conjugate_plate_id,time):
     point_feature.set_reconstruction_plate_id(plate_id)
     point_feature.set_conjugate_plate_id(conjugate_plate_id)
     point_feature.set_name('Slab Edge | plate %d | rel. plate %d' % (plate_id,conjugate_plate_id))
-    
-    return point_feature
 
+    return point_feature
