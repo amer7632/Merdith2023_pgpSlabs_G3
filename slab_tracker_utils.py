@@ -1,6 +1,7 @@
 from __future__ import print_function
 import pygplates
 import numpy as np
+from scipy import spatial
 import sys
 import xarray as xr
 import inpaint
@@ -9,16 +10,66 @@ import scipy.interpolate as spi
 
 bug_fix_arc_dir = -1.0 if pygplates.Version.get_imported_version() < pygplates.Version(14) else 1.0
 
+def transform_coordinates(coords):
+    """ Transform coordinates from geodetic to cartesian
+
+    Keyword arguments:
+    coords - a set of lan/lon coordinates (e.g. a tuple or
+             an array of tuples)
+
+    taken from:
+    https://notes.stefanomattia.net/2017/12/12/The-quest-to-find-the-closest-ground-pixel/
+    """
+    # WGS 84 reference coordinate system parameters
+    A = 6378.137 # major axis [km]
+    E2 = 6.69437999014e-3 # eccentricity squared
+
+    coords = np.asarray(coords).astype(np.float)
+
+    # is coords a tuple? Convert it to an one-element array of tuples
+    if coords.ndim == 1:
+        coords = np.array([coords])
+
+    # convert to radiants
+    lat_rad = np.radians(coords[:,0])
+    lon_rad = np.radians(coords[:,1])
+
+    # convert to cartesian coordinates
+    r_n = A / (np.sqrt(1 - E2 * (np.sin(lat_rad) ** 2)))
+    x = r_n * np.cos(lat_rad) * np.cos(lon_rad)
+    y = r_n * np.cos(lat_rad) * np.sin(lon_rad)
+    z = r_n * (1 - E2) * np.sin(lat_rad)
+
+    return np.column_stack((x, y, z))
+
+def get_dip_angle_from_slab2(lat, lon, KDtree):
+    '''
+    given a lat/lon point
+    find the nearest dip angle
+    '''
+
+    #convert lons to 0–360
+    if lon < 0:
+        lon = lon+360
+
+    lat_lon_point = (lat, lon)
+
+    index = KDtree.query(transform_coordinates(lat_lon_point))
+
+    return(index)
 
 # function that takes a netcdf grid, fills dummy values, then creates
 # an interpolator object that can be evaluated later at specified points
-def make_age_interpolator(grdfile,interp='FlatEarth'):
+def make_age_interpolator(grdfile,interp='Spherical'):
 
     ds_disk = xr.open_dataset(grdfile)
 
-    data_array = ds_disk['z']
+    try:
+        data_array = ds_disk['z']
+    except KeyError:
+        data_array = ds_disk['peridotite_thickness_post_serpentinisation']
 
-    coord_keys = data_array.coords.keys()
+    coord_keys = list(data_array.coords.keys())
     gridX = data_array.coords[coord_keys[0]].data
     gridY = data_array.coords[coord_keys[1]].data
     gridZ = data_array.data
@@ -133,6 +184,7 @@ def find_overriding_and_subducting_plates(subduction_shared_sub_segment, time):
 
 
 # function to warp polyline based on starting subduction segment location
+# function to warp polyline based on starting subduction segment location
 def warp_subduction_segment(tessellated_line,
                             rotation_model,
                             subducting_plate_id,
@@ -141,7 +193,8 @@ def warp_subduction_segment(tessellated_line,
                             time,
                             end_time,
                             time_step,
-                            dip_angle_radians,
+                            clean_dips,
+                            ground_pixel_tree,
                             subducting_plate_disappearance_time=-1,
                             use_small_circle_path=False):
 
@@ -239,7 +292,7 @@ def warp_subduction_segment(tessellated_line,
             else:
                 normal = (prev_normal + next_normal).to_normalised()
 
-            parallel = pygplates.Vector3D.cross(point.to_xyz(), normal).to_normalised()
+            parallel = pygplates.Vector3D.cross(points[point_index].to_xyz(), normal).to_normalised()
 
             normals.append(normal)
             parallels.append(parallel)
@@ -248,7 +301,19 @@ def warp_subduction_segment(tessellated_line,
         # based on plate motion and subduction dip
         warped_points = []
         warped_point_depths = []
+        dips = []
         for point_index, point in enumerate(points):
+
+            #get dip angle
+            point_lat = point.to_lat_lon_array()[0][0]
+            point_lon = point.to_lat_lon_array()[0][1]
+
+            dip_index = get_dip_angle_from_slab2(point_lat, point_lon, ground_pixel_tree)
+            #index returns [distance][index of array]
+            dip_angle_degrees = clean_dips.values[dip_index[1][0]]
+
+            dip_angle_radians = np.radians(dip_angle_degrees)
+
             normal = normals[point_index]
             parallel = parallels[point_index]
 
@@ -270,9 +335,9 @@ def warp_subduction_segment(tessellated_line,
 
             normal_vector = normal.to_normalised() * velocity_normal
             parallel_vector = parallel.to_normalised() * velocity_parallel
-
             # Adjust velocity based on subduction vertical dip angle.
             velocity_dip = parallel_vector + np.cos(dip_angle_radians) * normal_vector
+            dips.append(dip_angle_degrees)
 
             #deltaZ is the amount that this point increases in depth within the time step
             deltaZ = np.sin(dip_angle_radians) * velocity.get_magnitude()
@@ -331,7 +396,7 @@ def warp_subduction_segment(tessellated_line,
         polyline = warped_polyline
         point_depths = warped_point_depths
 
-    return points, point_depths, polyline
+    return points, point_depths, polyline, dips
 
 
 def write_subducted_slabs_to_xyz(output_filename,output_data):
