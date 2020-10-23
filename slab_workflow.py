@@ -1,7 +1,7 @@
 import pygplates
 import numpy as np
 import glob
-
+import pandas as pd
 import pickle
 import dill
 
@@ -20,10 +20,10 @@ from scipy.interpolate import interp1d
 #######################################################
 #'''
 
-MODELDIR = '/Applications/GPlates-2.2.0/SampleData/FeatureCollections'
-RotFile_List = ['%s/Rotations/Matthews_etal_GPC_2016_410-0Ma_GK07.rot' % MODELDIR]
-GPML_List = ['%s/DynamicPolygons/Matthews_etal_GPC_2016_MesozoicCenozoic_PlateTopologies.gpmlz' % MODELDIR,\
-             '%s/DynamicPolygons/Matthews_etal_GPC_2016_Paleozoic_PlateTopologies.gpmlz' % MODELDIR]
+MODELDIR = '/Users/andrew/Documents/GitHub/EarthBytePlateMotionModel-ARCHIVE/Muller++_2015_AREPS_CORRECTED/'
+RotFile_List = ['%sGlobal_EarthByte_230-0Ma_GK07_AREPS.rot' % MODELDIR]
+GPML_List = ['%sGlobal_EarthByte_230-0Ma_GK07_AREPS_PlateBoundaries.gpml' % MODELDIR,\
+              '%sGlobal_EarthByte_230-0Ma_GK07_AREPS_Topology_BuildingBlocks.gpml' % MODELDIR]
 
 #####################################
 rotation_model = pygplates.RotationModel(RotFile_List)
@@ -43,7 +43,7 @@ end_time = 0.
 time_step = 1.0
 dip_angle_degrees = 45.0
 line_tessellation_distance = np.radians(1.0)
-handle_splits = False
+handle_splits = True
 # Try to use small circle path for stage rotation to rotate along velocity dip.
 # Ie, distance to stage rotation pole matches distance to original stage pole.
 #use_small_circle_path = False
@@ -91,7 +91,7 @@ def get_slab_surfaces(slab_dir, FNAME):
         else:
             tline = list(map(float, tline.split()))
             MohoArray.append(tline)
-
+    #fid.close()
     SurfaceArray = np.asarray(SurfaceArray)
     MohoArray = np.asarray(MohoArray)
 
@@ -135,12 +135,15 @@ def get_intersecting_values(intersecting_lines, cross_section_line):
         age_of_subdcution = line[0]
         iso_subchron = line[1]
         depth = line[2]
-        variable_data = line[3]
+        #might have more than one variable
+        for variable, array in enumerate(line[3]):
+            variable_data = line[3]
 
         #get intersect points, and starting indices of the segments that contain intersect points of our two lines
         #(cross section line, and iso-subchron)
         closest_point_data = \
-        pygplates.GeometryOnSphere.distance(iso_subchron, cross_section_line,
+        pygplates.GeometryOnSphere.distance(iso_subchron,
+                                            cross_section_line,
                                             return_closest_positions=True,
                                             return_closest_indices=True)
 
@@ -149,16 +152,18 @@ def get_intersecting_values(intersecting_lines, cross_section_line):
         #NB these next two should be the same
         tmp_sub_isochron_intercept = closest_point_data[1]
         tmp_cross_section_intercept = closest_point_data[2]
+
         #the indices refer to the start of the containing segment
         tmp_sub_isochron_segment_index = closest_point_data[3]
         tmp_cross_section_segment_index = closest_point_data[4]
 
         #set depths and variable indices
-        variables = variable_data[tmp_sub_isochron_segment_index:tmp_sub_isochron_segment_index+2]
-        depths = depth[tmp_sub_isochron_segment_index:tmp_sub_isochron_segment_index+2]
+        for variable_index, array in enumerate(variable_data):
+            variables = variable_data[variable_index][tmp_sub_isochron_segment_index:tmp_sub_isochron_segment_index+2]
+            interpolated_variable = sxs.get_intercept_values(tmp_sub_isochron_intercept, iso_subchron, variables)
+            interpolated_variables.append(interpolated_variable)
 
-        interpolated_variable = sxs.get_intercept_values(tmp_sub_isochron_intercept, iso_subchron, variables)
-        interpolated_variables.append(interpolated_variable)
+        depths = depth[tmp_sub_isochron_segment_index:tmp_sub_isochron_segment_index+2]
 
         #NB (check)
         #because we are plotting depths and explicit distances along, we inherently correct for true/
@@ -169,7 +174,7 @@ def get_intersecting_values(intersecting_lines, cross_section_line):
         tmp_values = age_of_subdcution, \
                      iso_subchron[tmp_sub_isochron_segment_index], \
                      depth[tmp_sub_isochron_segment_index], \
-                     variable_data[tmp_sub_isochron_segment_index]
+                     [i[tmp_sub_isochron_segment_index] for i in variable_data]
 
         intersecting_points.append(tmp_values)
 
@@ -177,7 +182,6 @@ def get_intersecting_values(intersecting_lines, cross_section_line):
     intersecting_points_reversed = intersecting_points[::-1]
 
     return intersecting_points_reversed, intersecting_points, interpolated_variables, interpolated_depths
-
 
 def cross_section_line_pygplates(lat1, lon1, lat2, lon2, spacing):
     '''
@@ -232,9 +236,14 @@ def get_subducted_slabs(start_time, end_time, time_step, grid_filename, slab_XR)
 
         # Set up an age grid interpolator for this time, to be used
         # for each tessellated line segment
+        lut = []
         if grid_filename is not None:
-            grdfile = '%s%d%s' % (grid_filename[0],time,grid_filename[1])
-            lut = slab.make_age_interpolator(grdfile)
+            for ind,i in enumerate(grid_filename):
+                count = ind + 1
+                if count % 2 != 0:
+                    grdfile = '%s%d%s' % (grid_filename[ind],time,grid_filename[ind+1])
+                    lut.append(slab.make_age_interpolator(grdfile))
+
 
         #print subduction_boundary_sections
 
@@ -264,15 +273,15 @@ def get_subducted_slabs(start_time, end_time, time_step, grid_filename, slab_XR)
 
             tessellated_line = subduction_segment.get_resolved_geometry().to_tessellated(line_tessellation_distance)
 
-            #print len(tessellated_line.get_points())
-
-            if grid_filename is not None:
+            variable_results = []
+            if lut is not None:
                 x = tessellated_line.to_lat_lon_array()[:,1]
                 y = tessellated_line.to_lat_lon_array()[:,0]
-                subduction_ages = lut.ev(np.radians(y+90.),np.radians(x+180.))
+                for i in lut:
+                    variable_results.append(i.ev(np.radians(y+90.),np.radians(x+180.)))
             else:
                 # if no age grids, just fill the ages with zero
-                subduction_ages = [0. for point in tessellated_line.to_lat_lon_array()[:,1]]
+                variable_results = [0. for point in tessellated_line.to_lat_lon_array()[:,1]]
 
             # CALL THE MAIN WARPING FUNCTION
             (points,
@@ -288,15 +297,415 @@ def get_subducted_slabs(start_time, end_time, time_step, grid_filename, slab_XR)
                                                       clean_dips,
                                                       ground_pixel_tree,
                                                       subducting_plate_disappearance_time)
-
-            output_data.append([time,polyline,point_depths,subduction_ages])
+            #print(dips)
+            output_data.append([time,polyline,point_depths,variable_results, dips])
 
 
     # write out the features for GPlates
     #output_features = pygplates.FeatureCollection(point_features)
 
     ### write results to file
-    slab.write_subducted_slabs_to_xyz(output_filename,output_data)
+
+    #NB not corrected for multiple variables (yet)
+
+    #slab.write_subducted_slabs_to_xyz(output_filename,output_data)
     #close dataset
 
     return output_data
+
+def calcualte_pressure(density, depth):
+
+    '''
+    Calculate pressure at a series of points of set depths (km) with designated densities (g/cm3). Assumes
+    gravity is constant (9.8 m/s**2).
+
+    The basic equation we use is:
+
+    pressure = density • gravity • depth (with depth being total depth, or thickness of the layer)
+
+
+    Parameters
+    -----------
+    Density: list or array of densities, in g/cm3.
+        The collection of densities. Must correspond to each depth.
+
+    Depth: list or array of depths, in km
+        The collection of depths (from surface). Must have a corresponding density for each depth.
+
+    Returns
+    -------
+    Pressure: array of cumulative pressure, in Megapascals.
+        The cumulative pressure at each depth point.
+    '''
+    #set gravity
+    g = 9.8
+
+    #check if density is a list, if so convert to array
+    if isinstance(density, list):
+        density = np.asarray(density)
+
+    #check if depth is a list, if so convert to array
+    if isinstance(depth, list):
+        depth = np.asarray(depth)
+
+    #convert density to kg/m3
+    rho = density * 1000
+
+    #conver density to m
+    Z_bot = depth * 1000
+
+    #get incremental depths
+    layer_thicknesses = np.zeros_like(depth)
+    for ind,i in enumerate(Z_bot):
+        #we just use the current depth and subtract the previous one from it
+        if ind == 0:
+            #for the first point we just need index 0
+            layer_thicknesses[ind] = Z_bot[ind]
+        else:
+            #subtract current depth from previous one to get the change (i.e. the thickness of each layer)
+            layer_thicknesses[ind] = (Z_bot[ind] - Z_bot[ind-1])
+
+    #we sum the layer thicknesses and corresponding densities, and multiply by gravity to get pressure in pascals
+    pressure = np.sum(layer_thicknesses * rho) * g
+    #in megapascals
+    pressure = pressure * 1e-6
+
+    return pressure
+
+def get_sub_parameters(shared_boundary_sections):
+
+    '''
+    this function gets some subduction parameters from a series of shared boundary
+    sections
+
+    Inputs
+    _________
+    shared_boundary_sections: list of shared boundary sections of a GPLates
+                               full plate mode
+
+    Returns
+    ________
+    cross_section_start_points: array, the mid point of each segment (for use to start a cross
+                                section)
+    sub_length: array, the length of each segment in km
+
+    both returned variabels should have the same shape
+    '''
+
+
+    #we want to sample the mid point of each segment of subduction zone for our cross sections
+    cross_section_start_points = []
+    sub_length = []
+    polarity = []
+    segments = []
+    #loop through shared boundary sections to get subduction zones
+    for shared_boundary_section in shared_boundary_sections:
+        if shared_boundary_section.get_feature().get_feature_type() == pygplates.FeatureType.gpml_subduction_zone:
+            for shared_sub_segment in shared_boundary_section.get_shared_sub_segments():
+
+                #need polarity of subduction zones
+                tmp_polarity = slab.find_overriding_and_subducting_plates(shared_sub_segment, 0)
+
+                #skip sections with no polarity (should be fixed in the plate model)
+                if tmp_polarity is None:
+                    continue
+
+                #loop through segments (defined as straight line between two points in a cross section)
+                for segment in shared_sub_segment.get_geometry().get_segments():
+
+                    segment_mean_lat = np.mean((segment.get_start_point().to_lat_lon()[0],
+                                                segment.get_end_point().to_lat_lon()[0]))
+                    segment_mean_lon = np.mean((segment.get_start_point().to_lat_lon()[1],
+                                                segment.get_end_point().to_lat_lon()[1]))
+
+                    #get mean lat/lon of segment (i.e. centre point) to use as a point to anchor the cross section
+                    cross_section_start_points.append([segment_mean_lat, segment_mean_lon])
+                    segments.append(segment)
+                    sub_length.append(segment.get_arc_length()*pygplates.Earth.mean_radius_in_kms)
+                    polarity.append(tmp_polarity[2])
+
+    cross_section_start_points = np.asarray(cross_section_start_points)
+    sub_length = np.asarray(sub_length)
+
+    return cross_section_start_points, sub_length, segments, polarity
+
+def make_cross_section(forward_distance, back_distance,cross_section_start_points, segments, polarity):
+
+    '''
+    given a lat-lon point and two distances, constructs a cross section between the start
+    and end points through the lat-lon point
+
+    Inputs
+    _______
+    forward_distance and backward_distance: int or float
+            distance from the cross section forwards and backwards (defines the extent)
+
+    cross_section_start_points: array
+        input lat/lons that define our cross-sections
+
+    segments: array
+        segments of each subduction zone
+
+    polarity: array
+        polarity of subduction zones
+
+    Returns
+    ________
+    Cross_section_start_points: array
+        array of (new) start points for cross sections
+    Cross_section_end_points: array
+        array of end points for cross sections
+
+    both should be the same length as input data
+    '''
+
+
+    #now to get our cross section start and end points
+    #we use angular distance to sample our cross section forwards and backwards from our segment point
+    angular_distance_forwards = np.radians(forward_distance)
+    angular_distance_backwards = np.radians(back_distance)
+
+    #replace mid points from previous cell with 'new start points'
+    cross_section_end_points = []
+    new_cross_section_start_points = []
+
+    #loop through points
+    for index in range(len(cross_section_start_points)):
+        #print(index)
+        #skip small segments, mainly because they usually occur
+        #at edges of subduction zones, and can then cause issues with overlap
+        #if segments[index].get_arc_length() * pygplates.Earth.mean_radius_in_kms < 25:
+
+            #continue
+
+        #mid point of cross section segment
+        mid_point = pygplates.PointOnSphere(cross_section_start_points[index])
+
+        #get normal great circle to segment
+        normal = segments[index].get_great_circle_normal().to_normalised()
+
+        # Get the unnormalised vector along the normal from the mid point
+        stage_pole_x, stage_pole_y, stage_pole_z = pygplates.Vector3D.cross(
+                                    mid_point.to_xyz(), normal).to_xyz()
+
+        #turn vector into a stage pole? i.e. a point on the great cricle
+        stage_pole = pygplates.PointOnSphere(
+                            stage_pole_x, stage_pole_y, stage_pole_z, normalise=True)
+
+        #normal great circle always to the left of the subduction zone, so have to reverse otherwise
+        print(polarity[index])
+        if polarity[index] == 'Left':
+            subducting_normal_reversal = 1
+        else:
+            print(index)
+            subducting_normal_reversal = -1
+        #get the rotation of the stage pole using a set angle to get cross section end point
+        stage_rotation = pygplates.FiniteRotation(stage_pole, angular_distance_forwards * subducting_normal_reversal)
+        #get cross section end point
+        cross_section_end_point = stage_rotation * mid_point
+        cross_section_end_points.append([cross_section_end_point.to_lat_lon_array()[0][0],
+                                        cross_section_end_point.to_lat_lon_array()[0][1]])
+
+        #need to extend the start point back a bit, so just multiply by -1 to get the other direction
+        stage_rotation = pygplates.FiniteRotation(stage_pole, angular_distance_backwards * subducting_normal_reversal *-1)
+        new_cross_section_start_point = stage_rotation * mid_point
+
+        new_cross_section_start_points.append([new_cross_section_start_point.to_lat_lon_array()[0][0],
+                                               new_cross_section_start_point.to_lat_lon_array()[0][1]])
+
+
+    cross_section_end_points = np.asarray(cross_section_end_points)
+    new_cross_section_start_points = np.asarray(new_cross_section_start_points)
+
+
+    #now because slabs are in 0–360..
+    #for i in cross_section_end_points[:,1]:
+    #    if i > 180:
+    #        input_lon = input_lon-360
+
+    return new_cross_section_start_points, cross_section_end_points
+
+def populate_cross_section(output_data, cross_section_end_points,
+                       cross_section_start_points, steps):
+
+    '''
+    given a lat-lon point and two distances, constructs a cross section between the start
+    and end points through the lat-lon point for pygmt and rockhunter
+
+    Inputs
+    _______
+    output_data: array
+        series of arrays describing a subducted slab
+
+    cross_section_start_points and cross_section_end_points: array
+        input lat/lons that define the start/end pooints of our cross-sections
+
+    steps: int
+        number of steps in the cross section
+
+    Returns
+    ________
+    cross_section_points: dataframe
+        pandas dataframe of longitude and latitude (USED FOR PYGMT)
+    cross_section_lines: array
+        array of latitude and longitude points defining a cross-section
+    intersecting_lines: array
+        array of lines from a sub-isochron from a subducted slab that intersect
+        with our cross section (this is where our data is stored)
+    '''
+
+    cross_section_end_point = cross_section_end_points[:]
+    cross_section_start_point = cross_section_start_points[:]
+    #define line for cross section
+    #we need two types of cross sections, one for slab 2.0
+    #one for pygmt
+    #they, unfortunately, have to be built in different ways
+
+    #slab2.0
+    cross_section_points = []
+    cross_section_lines = []
+    intersecting_lines = []
+    for end_point, start_point in zip(cross_section_end_point, cross_section_start_point):
+        start_lat = start_point[0]
+        start_lon = start_point[1]
+        end_lat = end_point[0]
+        end_lon = end_point[1]
+
+        #get cross_section line
+        cross_section_line = cross_section_line_pygplates(start_lat,
+                                                          start_lon,
+                                                          end_lat,
+                                                          end_lon,
+                                                          0.1)
+
+        #get the iso-subchrons that intersect the cross section line
+
+        intersecting_line = []
+        for ind, polyline in enumerate(output_data):
+            #print(ind)
+            #if not polyline:
+            #    continue
+            #get min distance between 'iso-sub-chron' and our cross section
+            min_distance_to_feature = pygplates.GeometryOnSphere.distance(polyline[1], cross_section_line)
+            #if min distance is 0, then they intersect and we want the rest of the data
+
+            if min_distance_to_feature == 0:
+                intersecting_line.append(polyline)
+
+        steps = 200
+        lat = np.linspace(start_lat,end_lat, int(steps))
+        lon = np.linspace(start_lon,end_lon, int(steps))
+
+        #pygmt track needs lon/lat as separate columns in pandas dataframe
+        d = { 'lon': lon,'lat': lat}
+        points = pd.DataFrame(data=d)
+
+        cross_section_points.append(points)
+        cross_section_lines.append(cross_section_line)
+        intersecting_lines.append(intersecting_line)
+
+    return cross_section_points, cross_section_lines, intersecting_lines
+
+def get_distances(intersecting_points, intersecting_depths, tracks):
+
+    '''
+    returns distance between points on a cross section and in the depth profile
+
+    Inputs
+    --------
+    Intersecting_points: array
+        array of lat/lon points
+    Intersecting_depth: array
+        array of depths corresponding to each lat/lon point
+
+    Returns
+    ---------
+    incremental_distances: array
+        array of the incremental distance between points in km (i.e distance between each point) for each
+        intersecting line
+    cum_distances: array
+        array of cumulative distance from first point to each intersecting line of the cross section
+    distance_range: array
+        distance of each point in the depth profile
+    '''
+
+    incremental_distances = []
+    cum_distances = []
+    distance_range = []
+
+    for index, point in enumerate(intersecting_points):
+        #calculate distance as going across cross section.
+        #each cross section has equally placed points
+
+        tmp_incremental_distance = []
+        tmp_cum_distances = []
+        for ind, i in enumerate(point):
+            if ind == 0:
+                #print(i[1])
+                incremental_distance = 0
+            else:
+                #we need current point, and previous point to get the distance between
+
+                incremental_distance = pygplates.GeometryOnSphere.distance(i[1],
+                                                                           intersecting_points[index][ind-1][1])
+
+            #to convert from radians to km we have to multiply by radius,
+            #but as we are at depth, the radius is slightly different
+            radius = pygplates.Earth.mean_radius_in_kms - intersecting_depths[index][::-1][ind]
+            tmp_incremental_distance.append(incremental_distance*radius)
+            tmp_cum_distances.append(np.sum(tmp_incremental_distance))
+
+            #print(intersecting_depths[index][-1][::-1][ind], radius, distance, distance*radius)
+        incremental_distances.append(tmp_incremental_distance)
+        cum_distances.append(tmp_cum_distances)
+
+        #use haversine formula to convert to km
+        #get distance, equally spaced so we can define at the start
+        lat1 = tracks[index]['lat'].values[0]
+        lat2 = tracks[index]['lat'].values[1]
+        lon1 = tracks[index]['lon'].values[0]
+        lon2 = tracks[index]['lon'].values[1]
+
+        # convert decimal degrees to radians
+        lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
+
+        # haversine formula
+        dlon = lon2 - lon1
+        dlat = lat2 - lat1
+        a = np.sin(dlat/2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2)**2
+
+        c = 2 * np.arcsin(np.sqrt(a))
+        r = 6371 # Radius of earth in kilometers. Use 3956 for miles
+
+        distance = c*r
+
+        #get the incremental range
+        tmp_distance_range = []
+        for i in range(tracks[index]['depth'].count()):
+
+            tmp_distance_range.append(i*distance)
+
+        distance_range.append(tmp_distance_range)
+
+    return distance_range, cum_distances, incremental_distances
+
+def _find_nearest(array, value):
+    """Find the index in array whose element is nearest to value.
+
+    Parameters
+    ----------
+    array : np.array
+      The array.
+
+    value : number
+      The value.
+
+    Returns
+    -------
+    integer
+      The index in array whose element is nearest to value.
+
+    """
+    if array.argmax() == array.size - 1 and value > array.max():
+        return array.size
+    return (np.abs(array - value)).argmin()

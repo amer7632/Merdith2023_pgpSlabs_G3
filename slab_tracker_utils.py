@@ -209,6 +209,7 @@ def warp_subduction_segment(tessellated_line,
     # with zero as the starting depth for each point at t=0
     points = [point for point in tessellated_line]
     point_depths = [0. for point in points]
+    point_dips = [0. for point in points]
 
     # Need at least two points for a polyline. Otherwise, return None for all results
     if len(points) < 2:
@@ -301,7 +302,7 @@ def warp_subduction_segment(tessellated_line,
         # based on plate motion and subduction dip
         warped_points = []
         warped_point_depths = []
-        dips = []
+        warped_dips = []
         for point_index, point in enumerate(points):
 
             #get dip angle
@@ -322,6 +323,7 @@ def warp_subduction_segment(tessellated_line,
                 # Point hasn't moved.
                 warped_points.append(point)
                 warped_point_depths.append(point_depths[point_index])
+                warped_dips.append(point_dips[point_index])
                 continue
 
             # reconstruct the tracked point from position at current time to
@@ -337,7 +339,7 @@ def warp_subduction_segment(tessellated_line,
             parallel_vector = parallel.to_normalised() * velocity_parallel
             # Adjust velocity based on subduction vertical dip angle.
             velocity_dip = parallel_vector + np.cos(dip_angle_radians) * normal_vector
-            dips.append(dip_angle_degrees)
+            warped_dips.append(dip_angle_degrees)
 
             #deltaZ is the amount that this point increases in depth within the time step
             deltaZ = np.sin(dip_angle_radians) * velocity.get_magnitude()
@@ -385,18 +387,19 @@ def warp_subduction_segment(tessellated_line,
             warped_point = dip_stage_rotation * point
             warped_points.append(warped_point)
             warped_point_depths.append(point_depths[point_index] + deltaZ)
-
         # finished warping all points in polyline
         # --> increment the polyline for this time step
         warped_polyline = pygplates.PolylineOnSphere(warped_points)
         warped_polylines.append(warped_polyline)
+        #print('h', warped_dips)
 
         # For next warping iteration.
         points = warped_points
         polyline = warped_polyline
         point_depths = warped_point_depths
-
-    return points, point_depths, polyline, dips
+        point_dips = warped_dips
+        #print(point_dips)
+    return points, point_depths, polyline, point_dips
 
 
 def write_subducted_slabs_to_xyz(output_filename,output_data):

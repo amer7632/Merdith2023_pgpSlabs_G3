@@ -156,10 +156,10 @@ def get_plate_disappearance_time_lut(topology_features,
 
         (appearing_plate_map,
          disappearing_plate_map) = find_plate_change_for_time_step(topology_features,rotation_model,time_from,time_to,verbose)
-
-        if len(zip(*disappearing_plate_map))>0:
-            print( list(zip(*disappearing_plate_map)[0]))
-            for plate_id in list(zip(*disappearing_plate_map)[0]):
+        print(disappearing_plate_map)
+        if len(list(disappearing_plate_map))>0:
+            print('here', list(zip(*disappearing_plate_map))[0])
+            for plate_id in list(zip(*disappearing_plate_map))[0]:
                 plate_id
                 plate_disappearance_time_lut.append((plate_id,time))
 
