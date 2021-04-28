@@ -119,26 +119,37 @@ def get_slab_surfaces(slab_dir, FNAME):
     isotherm_output = [SurfaceCurieIsoDepths, MohoCurieIsoDepths, MagnetiteIsoDepths]
     return surface_output,isotherm_output
 
-def get_intersecting_values(intersecting_lines, cross_section_line):
+def get_intersecting_values(intersecting_lines_1, cross_section_line):
     '''
-    now that we have our intersecting lines, we can find the containing segment of the line, in order
-    to access the correct points (and then the correct depths, variables etc.)
+    now that we have our intersecting lines, we can find the containing segment
+    of the line, in order to access the correct points (and then the correct
+    depths, variables etc.)
     '''
 
     intersecting_points = []
     interpolated_variables = []
     interpolated_depths = []
 
-    for ind, line in enumerate(intersecting_lines):
+    for ind, line in enumerate(intersecting_lines_1):
 
         #for clarity we will enunciate each iso-subchron
         age_of_subdcution = line[0]
         iso_subchron = line[1]
         depth = line[2]
-        #might have more than one variable
-        for variable, array in enumerate(line[3]):
-            variable_data = line[3]
 
+        ##need to convert convergence rate to units
+        variable_data = []
+        ##print(variable_data)
+        conv_rates = []
+        for conv_rate in line[7]:
+            if isinstance(conv_rate, float):
+                conv_rates.append(conv_rate)
+            else:
+                conv_rates.append(conv_rate.get_magnitude())
+        conv_rates = np.asarray(conv_rates)
+        variable_data.append(line[3])
+        variable_data = np.asarray(variable_data[0])
+        merged_variable_data = np.vstack((variable_data, conv_rates))
         #get intersect points, and starting indices of the segments that contain intersect points of our two lines
         #(cross section line, and iso-subchron)
         closest_point_data = \
@@ -158,8 +169,9 @@ def get_intersecting_values(intersecting_lines, cross_section_line):
         tmp_cross_section_segment_index = closest_point_data[4]
 
         #set depths and variable indices
-        for variable_index, array in enumerate(variable_data):
-            variables = variable_data[variable_index][tmp_sub_isochron_segment_index:tmp_sub_isochron_segment_index+2]
+        #print(merged_variable_data)
+        for variable_index, array in enumerate(merged_variable_data):
+            variables = merged_variable_data[variable_index][tmp_sub_isochron_segment_index:tmp_sub_isochron_segment_index+2]
             interpolated_variable = sxs.get_intercept_values(tmp_sub_isochron_intercept, iso_subchron, variables)
             interpolated_variables.append(interpolated_variable)
 
@@ -172,9 +184,9 @@ def get_intersecting_values(intersecting_lines, cross_section_line):
         interpolated_depths.append(interpolated_depth)
 
         tmp_values = age_of_subdcution, \
-                     iso_subchron[tmp_sub_isochron_segment_index], \
+                     tmp_sub_isochron_intercept, \
                      depth[tmp_sub_isochron_segment_index], \
-                     [i[tmp_sub_isochron_segment_index] for i in variable_data]
+                     [i[tmp_sub_isochron_segment_index] for i in merged_variable_data]
 
         intersecting_points.append(tmp_values)
 
@@ -286,7 +298,7 @@ def get_subducted_slabs(start_time, end_time, time_step, grid_filename, slab_XR)
             # CALL THE MAIN WARPING FUNCTION
             (points,
              point_depths,
-             polyline,dips) = slab.warp_subduction_segment(tessellated_line,
+             polyline,dips, convergence_rates) = slab.warp_subduction_segment(tessellated_line,
                                                       rotation_model,
                                                       subducting_plate_id,
                                                       overriding_plate_id,
@@ -298,7 +310,7 @@ def get_subducted_slabs(start_time, end_time, time_step, grid_filename, slab_XR)
                                                       ground_pixel_tree,
                                                       subducting_plate_disappearance_time)
             #print(dips)
-            output_data.append([time,polyline,point_depths,variable_results, dips])
+            output_data.append([time,polyline,point_depths,variable_results, dips, overriding_plate_id, subducting_plate_id, convergence_rates])
 
 
     # write out the features for GPlates
@@ -493,11 +505,11 @@ def make_cross_section(forward_distance, back_distance,cross_section_start_point
                             stage_pole_x, stage_pole_y, stage_pole_z, normalise=True)
 
         #normal great circle always to the left of the subduction zone, so have to reverse otherwise
-        print(polarity[index])
+        #print(polarity[index])
         if polarity[index] == 'Left':
             subducting_normal_reversal = 1
         else:
-            print(index)
+            #print(index)
             subducting_normal_reversal = -1
         #get the rotation of the stage pole using a set angle to get cross section end point
         stage_rotation = pygplates.FiniteRotation(stage_pole, angular_distance_forwards * subducting_normal_reversal)
@@ -565,7 +577,9 @@ def populate_cross_section(output_data, cross_section_end_points,
     cross_section_points = []
     cross_section_lines = []
     intersecting_lines = []
-    for end_point, start_point in zip(cross_section_end_point, cross_section_start_point):
+    distance_to_lines = []
+    sorted_intersecting_lines = []
+    for ind, (end_point, start_point) in enumerate(zip(cross_section_end_point, cross_section_start_point)):
         start_lat = start_point[0]
         start_lon = start_point[1]
         end_lat = end_point[0]
@@ -581,7 +595,9 @@ def populate_cross_section(output_data, cross_section_end_points,
         #get the iso-subchrons that intersect the cross section line
 
         intersecting_line = []
-        for ind, polyline in enumerate(output_data):
+        distance_to_line = []
+        #NB this returns the lines in a non-random, but non correct order
+        for ind1, polyline in enumerate(output_data):
             #print(ind)
             #if not polyline:
             #    continue
@@ -591,7 +607,29 @@ def populate_cross_section(output_data, cross_section_end_points,
 
             if min_distance_to_feature == 0:
                 intersecting_line.append(polyline)
+                distance_to_line.append(pygplates.GeometryOnSphere.distance(polyline[1],
+                                                                pygplates.PointOnSphere([start_lat,
+                                                                    start_lon])))
+        #print(distance_to_line)
+        #now we can order (sort) our lines correctly based on distance to start of cross_section
+        sorted_lines = [x for _,x in sorted(zip(distance_to_line,intersecting_line))]
 
+        new_intersecting_lines = []
+        #already sorted based on distance to present-day subduction zone
+        #so the last entry is the '5' Ma
+        if sorted_lines:
+            #print(len(sorted_lines))
+            #get present day over-riding and downgoing plate
+            tmp_overriding_plate = sorted_lines[0][5]
+            tmp_downgoing_plate = sorted_lines[0][6]
+            #check to make sure that all lines have same downgoing plate
+
+            for sorted_line in sorted_lines:
+                #print(sorted_line[6])
+                ###THIS IS important, -2 refers to downgoing plate
+                if sorted_line[6] == tmp_downgoing_plate:
+                    new_intersecting_lines.append(sorted_line)
+        #print(ind, len(sorted_lines), len(new_intersecting_lines))
         steps = 200
         lat = np.linspace(start_lat,end_lat, int(steps))
         lon = np.linspace(start_lon,end_lon, int(steps))
@@ -603,8 +641,10 @@ def populate_cross_section(output_data, cross_section_end_points,
         cross_section_points.append(points)
         cross_section_lines.append(cross_section_line)
         intersecting_lines.append(intersecting_line)
-
-    return cross_section_points, cross_section_lines, intersecting_lines
+        sorted_intersecting_lines.append(new_intersecting_lines)
+        #sorted_intersecting_lines.append(sorted_lines)
+        distance_to_lines.append(distance_to_line)
+    return cross_section_points, cross_section_lines, sorted_intersecting_lines
 
 def get_distances(intersecting_points, intersecting_depths, tracks):
 
@@ -634,12 +674,16 @@ def get_distances(intersecting_points, intersecting_depths, tracks):
     distance_range = []
 
     for index, point in enumerate(intersecting_points):
+        #print(index)
+        #print(point)
         #calculate distance as going across cross section.
         #each cross section has equally placed points
 
         tmp_incremental_distance = []
         tmp_cum_distances = []
+
         for ind, i in enumerate(point):
+            #print(i)
             if ind == 0:
                 #print(i[1])
                 incremental_distance = 0
@@ -659,37 +703,68 @@ def get_distances(intersecting_points, intersecting_depths, tracks):
         incremental_distances.append(tmp_incremental_distance)
         cum_distances.append(tmp_cum_distances)
 
+        tmp_distance_range = []
+        if len(tracks[index]) < 2:
+            tmp_distance_range.append(1)
+        #print(tracks[index]['lat'])
         #use haversine formula to convert to km
         #get distance, equally spaced so we can define at the start
-        lat1 = tracks[index]['lat'].values[0]
-        lat2 = tracks[index]['lat'].values[1]
-        lon1 = tracks[index]['lon'].values[0]
-        lon2 = tracks[index]['lon'].values[1]
+        else:
+            lat1 = tracks[index]['lat'].values[0]
+            lat2 = tracks[index]['lat'].values[1]
+            lon1 = tracks[index]['lon'].values[0]
+            lon2 = tracks[index]['lon'].values[1]
 
-        # convert decimal degrees to radians
-        lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
+            # convert decimal degrees to radians
+            lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
 
-        # haversine formula
-        dlon = lon2 - lon1
-        dlat = lat2 - lat1
-        a = np.sin(dlat/2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2)**2
 
-        c = 2 * np.arcsin(np.sqrt(a))
-        r = 6371 # Radius of earth in kilometers. Use 3956 for miles
+            distance = haversine_formula(lon1, lon2, lat1, lat2)
+            #print(distance)
+            #get the incremental range
+            for i in range(tracks[index]['depth'].count()):
 
-        distance = c*r
-
-        #get the incremental range
-        tmp_distance_range = []
-        for i in range(tracks[index]['depth'].count()):
-
-            tmp_distance_range.append(i*distance)
+                tmp_distance_range.append(i*distance)
 
         distance_range.append(tmp_distance_range)
 
     return distance_range, cum_distances, incremental_distances
 
+def haversine_formula(lon1, lon2, lat1, lat2):
+# haversine formula
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = np.sin(dlat/2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2)**2
+
+    c = 2 * np.arcsin(np.sqrt(a))
+    r = 6371 # Radius of earth in kilometers. Use 3956 for miles
+
+    distance = c*r
+
+    return distance
+
 def _find_nearest(array, value):
+    """Find the index in array whose element is nearest to value.
+
+    Parameters
+    ----------
+    array : np.array
+      The array.
+
+    value : number
+      The value.
+
+    Returns
+    -------
+    integer
+      The index in array whose element is nearest to value.
+
+    """
+    if array.argmax() == array.size - 1 and value > array.max():
+        return 0#array.size
+    return (np.abs(array - value)).argmin()
+
+def _find_nearest_temp(array, value):
     """Find the index in array whose element is nearest to value.
 
     Parameters

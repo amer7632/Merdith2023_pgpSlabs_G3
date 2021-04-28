@@ -207,9 +207,20 @@ def warp_subduction_segment(tessellated_line,
 
     # tesselate the line, and create an array with the same length as the tesselated points
     # with zero as the starting depth for each point at t=0
+            # get velocity vectors at each point along polyline
     points = [point for point in tessellated_line]
+    stage_rotation = rotation_model.get_rotation(subducting_plate_disappearance_time+time_step,
+                                                 subducting_plate_id,
+                                                 subducting_plate_disappearance_time)
+    present_day_velocity_vectors = pygplates.calculate_velocities(
+            points,
+            stage_rotation,
+            time_step,
+            pygplates.VelocityUnits.kms_per_my)
     point_depths = [0. for point in points]
     point_dips = [0. for point in points]
+    #point_convergence_rates = [i.get_magnitude() for i in relative_velocity_vectors]
+    point_convergence_rates = [0. for point in points]
 
     # Need at least two points for a polyline. Otherwise, return None for all results
     if len(points) < 2:
@@ -219,7 +230,6 @@ def warp_subduction_segment(tessellated_line,
     polyline = pygplates.PolylineOnSphere(points)
 
     warped_polylines = []
-
     # Add original unwarped polyline first.
     warped_polylines.append(polyline)
 
@@ -303,6 +313,7 @@ def warp_subduction_segment(tessellated_line,
         warped_points = []
         warped_point_depths = []
         warped_dips = []
+        warped_convergence_rates = []
         for point_index, point in enumerate(points):
 
             #get dip angle
@@ -319,11 +330,14 @@ def warp_subduction_segment(tessellated_line,
             parallel = parallels[point_index]
 
             velocity = relative_velocity_vectors[point_index]
+
             if velocity.is_zero_magnitude():
                 # Point hasn't moved.
                 warped_points.append(point)
                 warped_point_depths.append(point_depths[point_index])
                 warped_dips.append(point_dips[point_index])
+                warped_convergence_rates.append(point_convergence_rates[point_index])
+
                 continue
 
             # reconstruct the tracked point from position at current time to
@@ -340,7 +354,7 @@ def warp_subduction_segment(tessellated_line,
             # Adjust velocity based on subduction vertical dip angle.
             velocity_dip = parallel_vector + np.cos(dip_angle_radians) * normal_vector
             warped_dips.append(dip_angle_degrees)
-
+            warped_convergence_rates.append(velocity)
             #deltaZ is the amount that this point increases in depth within the time step
             deltaZ = np.sin(dip_angle_radians) * velocity.get_magnitude()
 
@@ -387,6 +401,7 @@ def warp_subduction_segment(tessellated_line,
             warped_point = dip_stage_rotation * point
             warped_points.append(warped_point)
             warped_point_depths.append(point_depths[point_index] + deltaZ)
+
         # finished warping all points in polyline
         # --> increment the polyline for this time step
         warped_polyline = pygplates.PolylineOnSphere(warped_points)
@@ -398,8 +413,9 @@ def warp_subduction_segment(tessellated_line,
         polyline = warped_polyline
         point_depths = warped_point_depths
         point_dips = warped_dips
+        point_convergence_rates = warped_convergence_rates
         #print(point_dips)
-    return points, point_depths, polyline, point_dips
+    return points, point_depths, polyline, point_dips, point_convergence_rates
 
 
 def write_subducted_slabs_to_xyz(output_filename,output_data):
