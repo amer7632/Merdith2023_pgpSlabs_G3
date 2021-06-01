@@ -53,10 +53,15 @@ def get_dip_angle_from_slab2(lat, lon, KDtree):
         lon = lon+360
 
     lat_lon_point = (lat, lon)
+    #get 8 nearest dips and take the mean
+    KDtree_results = KDtree.query(transform_coordinates(lat_lon_point), 8)
+    nearest_dips = KDtree_results[0]
+    nearest_indices = KDtree_results[1]
 
-    index = KDtree.query(transform_coordinates(lat_lon_point))
+    index_of_nearest_dip = (np.abs(nearest_dips - np.mean(nearest_dips))).argmin()
+    nearest_index = nearest_indices[0][index_of_nearest_dip]
 
-    return(index)
+    return(nearest_index)
 
 # function that takes a netcdf grid, fills dummy values, then creates
 # an interpolator object that can be evaluated later at specified points
@@ -321,8 +326,9 @@ def warp_subduction_segment(tessellated_line,
             point_lon = point.to_lat_lon_array()[0][1]
 
             dip_index = get_dip_angle_from_slab2(point_lat, point_lon, ground_pixel_tree)
+            #print(dip_index)
             #index returns [distance][index of array]
-            dip_angle_degrees = clean_dips.values[dip_index[1][0]]
+            dip_angle_degrees = clean_dips.values[dip_index]
 
             dip_angle_radians = np.radians(dip_angle_degrees)
 

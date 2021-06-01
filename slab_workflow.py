@@ -1,3 +1,5 @@
+import sys
+sys.path.insert(1, '/Users/andrew/Documents/python/pygplates_rev28_python37_MacOS64')
 import pygplates
 import numpy as np
 import glob
@@ -22,7 +24,7 @@ from scipy.interpolate import interp1d
 
 MODELDIR = '/Users/andrew/Documents/GitHub/EarthBytePlateMotionModel-ARCHIVE/Muller++_2015_AREPS_CORRECTED/'
 RotFile_List = ['%sGlobal_EarthByte_230-0Ma_GK07_AREPS.rot' % MODELDIR]
-GPML_List = ['%sGlobal_EarthByte_230-0Ma_GK07_AREPS_PlateBoundaries.gpml' % MODELDIR,\
+GPML_List = ['%sGlobal_EarthByte_230-0Ma_GK07_AREPS_PlateBoundaries_ASM.gpml' % MODELDIR,\
               '%sGlobal_EarthByte_230-0Ma_GK07_AREPS_Topology_BuildingBlocks.gpml' % MODELDIR]
 
 #####################################
@@ -450,7 +452,7 @@ def make_cross_section(forward_distance, back_distance,cross_section_start_point
     Inputs
     _______
     forward_distance and backward_distance: int or float
-            distance from the cross section forwards and backwards (defines the extent)
+            distance from the cross section forwards and backwards in radians (defines the extent)
 
     cross_section_start_points: array
         input lat/lons that define our cross-sections
