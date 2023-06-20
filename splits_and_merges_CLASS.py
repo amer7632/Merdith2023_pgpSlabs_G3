@@ -5,7 +5,6 @@ Created on Wed Jun 14 15:12:04 2023
 @author: Andrew Merdith, comments by Kev Wong
 """
 
-
 from gplately import pygplates
 
 
