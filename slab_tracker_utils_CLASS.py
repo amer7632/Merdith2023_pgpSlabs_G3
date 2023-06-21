@@ -361,8 +361,8 @@ def warp_subduction_segment(tessellated_line,
 
     Returns
     -------
-    TYPE
-        DESCRIPTION.
+    tuple
+        Subduction variables (points, point_depths, polyline, point_dips, point_convergence_rates).
 
     """
 
@@ -638,6 +638,21 @@ def warp_subduction_segment(tessellated_line,
 
 
 def write_subducted_slabs_to_xyz(output_filename, output_data):
+    """
+    Export this information into an output file.
+
+    Parameters
+    ----------
+    output_filename : string
+        Name of output file.
+    output_data : numpy.array (? KW)
+        Output data to export.
+
+    Returns
+    -------
+    None.
+
+    """
 
     with open(output_filename, 'w') as output_file:
         output_file.write('Long,Lat,Depth,AgeAtSubduction,TimeOfSubduction\n')
