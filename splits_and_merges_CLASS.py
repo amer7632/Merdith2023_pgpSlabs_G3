@@ -251,13 +251,13 @@ def get_great_circle_along_plate_split(plate_split, shared_boundary_sections):
     ----------
     plate_split : tuple
         Tuple comprising plate ID of original plate and plate IDs of successors.
-    shared_boundary_sections : list of shared_boundary_section objects
+    shared_boundary_sections : list of pygplates.shared_boundary_section objects
         List of shared_boundary_section objects obtained from resolving pyGPlates topologies
 
     Returns
     -------
-    great_circle_arc : TYPE
-        DESCRIPTION.
+    great_circle_arc : pygplates.great_circle_arc object
+        Great circle arc dividing the plate when it splits.
 
     """
     great_circle_arc = None
