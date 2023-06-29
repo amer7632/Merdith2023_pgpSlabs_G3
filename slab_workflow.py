@@ -7,52 +7,29 @@ Created on Wed Jun 14 15:12:04 2023
 
 from gplately import pygplates
 import numpy as np
-import pandas as pd
 import slab_tracker_utils as slab
 import splits_and_merges as snm
 from scipy import spatial
 from scipy.interpolate import interp1d
 from slabdip import SlabDipper
 
-# Define some input files and import them into pygplates.
-# In this case, the Muller et al., 2016, AREPS is used...
-RotFile_List = ['./updatedMullerModel/Global_EarthByte_230-0Ma_GK07_AREPS.rot']
-GPML_List = ['./updatedMullerModel/Global_EarthByte_230-0Ma_GK07_AREPS_PlateBoundaries.gpml',
-             './updatedMullerModel/Global_EarthByte_230-0Ma_GK07_AREPS_Topology_BuildingBlocks' +
-             '.gpml']
 
-rotation_model = pygplates.RotationModel(RotFile_List)
-topology_features = pygplates.FeatureCollection()
+def find_with_list(myList, target): 
+    '''
+    Given a list and a target value in list, return index of that target value
 
-for file in GPML_List:
-    topology_feature = pygplates.FeatureCollection(file)
-    topology_features.add(topology_feature)
-
-# Input parameters for slab tracing.
-start_time = 15.
-end_time = 0.
-time_step = 1.0
-dip_angle_degrees = 45.0
-line_tessellation_distance = np.radians(1.0)
-handle_splits = True
-output_filename = 'subduction_3d_geometries_time_%0.2fMa_dip_%0.2fdeg.p' % (end_time,
-                                                                            dip_angle_degrees)
-
-# Try to use small circle path for stage rotation to rotate along velocity dip.
-# i.e., distance to stage rotation pole matches distance to original stage pole.
-# use_small_circle_path = False
-
-# def find_with_list(myList, target):  # I'm pretty sure this function is not needed (KW), and I'm
-# pretty sure that what is does is already a python method
-#     '''
-#     find index of thing in list
-#     '''
-
-#     inds = []
-#     for i in range(len(myList)):
-#         if myList[i] == target:
-#             inds += i,
-#     return inds
+    Paramters
+    -----------
+    myList : list
+        List of values you want the index from
+    target : object (float/int/string)
+        Item that you want to match
+    '''
+    inds = []
+    for i in range(len(myList)):
+        if myList[i] == target:
+            inds += i,
+    return inds
 
 
 def get_slab_surfaces(slab_dir, FNAME):
@@ -142,145 +119,6 @@ def get_slab_surfaces(slab_dir, FNAME):
 
     return surface_output, isotherm_output
 
-# KW: I have commented out this function since a) it is not needed in this particular code as far
-# as I can tell, and b) it refers to a module
-# shorthanded 'sxs' which is never called.
-# def get_intersecting_values(intersecting_lines_1, cross_section_line):
-#     """
-#     now that we have our intersecting lines, we can find the containing segment
-#     of the line, in order to access the correct points (and then the correct
-#     depths, variables etc.)
-#     I don't know why this function appears here as opposed to further below when the lines are
-#     defined (KW)
-
-#     Parameters
-#     ----------
-#     intersecting_lines_1 : TYPE
-#         DESCRIPTION.
-#     cross_section_line : TYPE
-#         DESCRIPTION.
-
-#     Returns
-#     -------
-#     intersecting_points_reversed : TYPE
-#         DESCRIPTION.
-#     intersecting_points : TYPE
-#         DESCRIPTION.
-#     interpolated_variables : TYPE
-#         DESCRIPTION.
-#     interpolated_depths : TYPE
-#         DESCRIPTION.
-
-#     """
-
-#     intersecting_points = []
-#     interpolated_variables = []
-#     interpolated_depths = []
-
-#     for ind, line in enumerate(intersecting_lines_1):
-
-#         # for clarity we will enunciate each iso-subchron
-#         age_of_subdcution = line[0]
-#         iso_subchron = line[1]
-#         depth = line[2]
-
-#         # need to convert convergence rate to units
-#         variable_data = []
-#         # print(variable_data)
-#         conv_rates = []
-#         for conv_rate in line[7]:
-#             if isinstance(conv_rate, float):
-#                 conv_rates.append(conv_rate)
-#             else:
-#                 conv_rates.append(conv_rate.get_magnitude())
-#         conv_rates = np.asarray(conv_rates)
-#         variable_data.append(line[3])
-#         variable_data = np.asarray(variable_data[0])
-#         merged_variable_data = np.vstack((variable_data, conv_rates))
-
-#         # get intersect points, and starting indices of the segments that contain intersect
-#         # points of our two lines (cross section line, and iso-subchron)
-#         closest_point_data = pygplates.GeometryOnSphere.distance(iso_subchron,
-#                                                                  cross_section_line,
-#                                                                  return_closest_positions=True,
-#                                                                  return_closest_indices=True)
-#         # for clarity we will enunciate the closest point data
-#         # tmp_distance = closest_point_data[0]  # This is just never assigned (KW)
-#         # NB these next two should be the same
-#         tmp_sub_isochron_intercept = closest_point_data[1]
-#         # tmp_cross_section_intercept = closest_point_data[2]  # Never assigned (KW)
-
-#         # the indices refer to the start of the containing segment
-#         tmp_sub_isochron_segment_index = closest_point_data[3]
-#         # tmp_cross_section_segment_index = closest_point_data[4]  # Never assigned (KW)
-
-#         # set depths and variable indices
-#         # print(merged_variable_data)
-#         for variable_index, array in enumerate(merged_variable_data):
-#             variables = merged_variable_data[variable_index][tmp_sub_isochron_segment_index:
-#                                                              tmp_sub_isochron_segment_index+2]
-#             interpolated_variable = sxs.get_intercept_values(tmp_sub_isochron_intercept,  # sxs?
-#                                                              iso_subchron, variables)
-#             interpolated_variables.append(interpolated_variable)
-
-#         depths = depth[tmp_sub_isochron_segment_index:tmp_sub_isochron_segment_index+2]
-
-#         # NB (check)
-#         # because we are plotting depths and explicit distances along, we inherently correct for
-#         # true apparent dip
-#         interpolated_depth = sxs.get_intercept_values(tmp_sub_isochron_intercept, #sxs? (KW))
-#                                                       iso_subchron, depths)
-#         interpolated_depths.append(interpolated_depth)
-
-#         tmp_values = (age_of_subduction,
-#                       tmp_sub_isochron_intercept,
-#                       depth[tmp_sub_isochron_segment_index],
-#                       [i[tmp_sub_isochron_segment_index] for i in merged_variable_data])
-
-#         intersecting_points.append(tmp_values)
-
-#     # reverse intersecting points so we're starting from the subduction zone
-#     intersecting_points_reversed = intersecting_points[::-1]
-
-#     return (intersecting_points_reversed, intersecting_points,
-#             interpolated_variables, interpolated_depths)
-
-
-def cross_section_line_pygplates(lat1, lon1, lat2, lon2, spacing):
-    """
-    Given two points and spacing between points, return a pygplates tessellated line.
-
-    Parameters
-    ----------
-    lat1 : float
-        Latitude of point 1 in decimal degrees.
-    lon1 : float
-        Latitude of point 1 in decimal degrees.
-    lat2 : float
-        Latitude of point 2 in decimal degrees.
-    lon2 : float
-        Latitude of point 2 in decimal degrees.
-    spacing : float
-        Spacing of cross section line in degrees.
-
-    Returns
-    -------
-    cross_section_line : list of pygplates.PointOnSphere
-        List of Cartesian points correponding to a tesselated polyline.
-
-    """
-
-    cross_section_points = []
-    cross_section_points.append((lat1, lon1))
-    cross_section_points.append((lat2, lon2))
-    # make line feature
-    cross_section_line = pygplates.PolylineOnSphere(cross_section_points)
-    # tessellate line
-    cross_section_line = cross_section_line.to_tessellated(np.radians(float(spacing)))
-
-    return cross_section_line
-
-
 def get_subducted_slabs(start_time, end_time, time_step, grid_filename, slab_XR):
     """
     Get iso-sub chrons (isochrons of original trench position) with dips from Slab2 geometry
@@ -323,8 +161,8 @@ def get_subducted_slabs(start_time, end_time, time_step, grid_filename, slab_XR)
     # should be a parameter in its own right here to avoid confusion... KW
     # Anyways, if the plate splits, then disappearance times are printed.
     if handle_splits:
-        plate_disappearance_time_lut = snm.get_plate_disappearance_time_lut(topology_features,
-                                                                            rotation_model,
+        plate_disappearance_time_lut = snm.get_plate_disappearance_time_lut(model.topology_features,
+                                                                            model.rotation_model,
                                                                             time_list,
                                                                             verbose=True)
 
@@ -335,8 +173,8 @@ def get_subducted_slabs(start_time, end_time, time_step, grid_filename, slab_XR)
         print('time %0.2f Ma' % time)
 
         # Call function to get subduction boundary segments
-        subduction_boundary_sections = slab.getSubductionBoundarySections(topology_features,
-                                                                          rotation_model,
+        subduction_boundary_sections = slab.getSubductionBoundarySections(model.topology_features,
+                                                                          model.rotation_model,
                                                                           time)
 
         # Set up an grid interpolator for this time, to be used for each tessellated line segment
@@ -405,7 +243,7 @@ def get_subducted_slabs(start_time, end_time, time_step, grid_filename, slab_XR)
              point_depths,
              polyline, dips, convergence_rates) = slab.warp_subduction_segment(
                  tessellated_line,
-                 rotation_model,
+                 model.rotation_model,
                  subducting_plate_id,
                  overriding_plate_id,
                  subduction_polarity,
@@ -419,203 +257,13 @@ def get_subducted_slabs(start_time, end_time, time_step, grid_filename, slab_XR)
             output_data.append([time, polyline, point_depths, variable_results, dips,
                                 overriding_plate_id, subducting_plate_id, convergence_rates])
 
-    # Legacy code and comments here... (KW)
-    # write out the features for GPlates
-    # output_features = pygplates.FeatureCollection(point_features)
-    # write results to file
-    # NB not corrected for multiple variables (yet)
-    # slab.write_subducted_slabs_to_xyz(output_filename,output_data)
-    # close dataset
 
     return output_data
 
-# This function seems depreciated so I have commented it out (KW)
-# def get_subducted_slabs_ORIGINAL(start_time, end_time, time_step, grid_filename, slab_XR):
-#     '''
-#     get iso-sub chrons with dips from slab 2.0 geometry
-#     '''
-#     clean_dips = slab_XR.dip[slab_XR.dip.notnull()]
-
-#     coords = np.column_stack((clean_dips.latitude.values.ravel(),
-#                               clean_dips.longitude.values.ravel()))
-
-#     ground_pixel_tree = spatial.cKDTree(slab.transform_coordinates(coords))
-
-#     output_data = []
-
-#     time_list = np.arange(start_time, end_time-time_step, -time_step)
-
-#     if handle_splits:
-#         plate_disappearance_time_lut = snm.get_plate_disappearance_time_lut(topology_features,
-#                                                                             rotation_model,
-#                                                                             time_list,
-#                                                                             verbose=True)
-
-#         print(plate_disappearance_time_lut)
-
-#     # loop over a series of times at which we want to extract trench iso-sub-chrons
-#     for time in time_list:
-
-#         print('time %0.2f Ma' % time)
-
-#         # call function to get subduction boundary segments
-#         subduction_boundary_sections = slab.getSubductionBoundarySections(topology_features,
-#                                                                           rotation_model,
-#                                                                           time)
-
-#         # Set up an grid interpolator for this time, to be used
-#         # for each tessellated line segment
-#         lut = []
-#         if grid_filename is not None:
-#             for ind, i in enumerate(grid_filename):
-#                 count = ind + 1
-#                 if count % 2 != 0:
-#                     grdfile = '%s%d%s' % (grid_filename[ind], time, grid_filename[ind+1])
-#                     lut.append(slab.make_age_interpolator(grdfile))
-
-#         # print(subduction_boundary_sections)
-
-#         # Loop over each segment
-#         for segment_index, subduction_segment in enumerate(subduction_boundary_sections):
-
-#             # find the overrding plate id (and only continue if we find it)
-#             overriding_and_subducting_plates = slab.find_overriding_and_subducting_plates(
-#                 subduction_segment, time)
-
-#             if not overriding_and_subducting_plates:
-#                 continue
-#             (overriding_plate, subducting_plate,
-#              subduction_polarity) = overriding_and_subducting_plates
-
-#             overriding_plate_id = overriding_plate.get_resolved_feature(
-#                 ).get_reconstruction_plate_id()
-#             subducting_plate_id = subducting_plate.get_resolved_feature(
-#                 ).get_reconstruction_plate_id()
-
-#             # if (opid != 224 or cpid != 909):
-#             # if (subducting_plate_id != 911 and subducting_plate_id != 909):
-#             # if subducting_plate_id < 900:
-#             #    continue
-
-#             subducting_plate_disappearance_time = -1.
-#             if handle_splits:
-#                 for plate_disappearance in plate_disappearance_time_lut:
-#                     if plate_disappearance[0] == subducting_plate_id:
-#                         subducting_plate_disappearance_time = plate_disappearance[1]
-
-#             tessellated_line = subduction_segment.get_resolved_geometry().to_tessellated(
-#                 line_tessellation_distance)
-
-#             # dip_at_tesselated_line = get_dip(points)
-
-#             variable_results = []
-#             if lut is not None:
-#                 x = tessellated_line.to_lat_lon_array()[:, 1]
-#                 y = tessellated_line.to_lat_lon_array()[:, 0]
-#                 for i in lut:
-#                     variable_results.append(i.ev(np.radians(y+90.), np.radians(x+180.)))
-#             else:
-#                 # if no age grids, just fill the ages with zero
-#                 variable_results = [0. for point in tessellated_line.to_lat_lon_array()[:, 1]]
-
-#             # CALL THE MAIN WARPING FUNCTION
-#             (points, point_depths, polyline, dips,
-#              convergence_rates) = slab.warp_subduction_segment(
-#                  tessellated_line,
-#                  rotation_model,
-#                  subducting_plate_id,
-#                  overriding_plate_id,
-#                  subduction_polarity,
-#                  time,
-#                  end_time,
-#                  time_step,
-#                  clean_dips,
-#                  ground_pixel_tree,
-#                  subducting_plate_disappearance_time)
-#             # print(dips)
-#             output_data.append([time, polyline, point_depths, variable_results, dips,
-#                                 overriding_plate_id, subducting_plate_id, convergence_rates])
-
-#     # write out the features for GPlates
-#     # output_features = pygplates.FeatureCollection(point_features)
-
-#     # write results to file
-
-#     # NB not corrected for multiple variables (yet)
-
-#     # slab.write_subducted_slabs_to_xyz(output_filename,output_data)
-#     # close dataset
-
-#     return output_data
-
-
-# Original function had a typo which I have corrected
-def calculate_pressure(density, depth):
-    """
-    Calculate pressure at a series of points of set depths (km) with designated densities (g/cm3).
-    Assumesgravity is constant (9.8 m/s2).
-    The basic equation we use is:
-    pressure = density • gravity • depth (with depth being total depth, or thickness of the layer)
-
-    Parameters
-    ----------
-    density : list or numpy.array
-        The collection of densities in g/cm3. Must correspond to each depth.
-    depth : list or numpy.array
-        The collection of depths (from surface) in km. Must have a corresponding density for each
-        depth.
-
-    Returns
-    -------
-    pressure : numpy.array
-        The cumulative pressure at each depth point in MPa.
-
-    """
-
-    # Set gravity
-    g = 9.8
-
-    # Check if density is a list, if so convert to array
-    if isinstance(density, list):
-        density = np.asarray(density)
-
-    # Check if depth is a list, if so convert to array
-    if isinstance(depth, list):
-        depth = np.asarray(depth)
-
-    # Convert density to kg/m3
-    rho = density * 1000
-
-    # Convert depth to m
-    Z_bot = depth * 1000
-
-    # Get incremental depths - list of zeros that we reassign with layer thicknesses
-    layer_thicknesses = np.zeros_like(depth)
-    for ind, i in enumerate(Z_bot):
-        # We just use the current depth and subtract the previous one from it
-        if ind == 0:
-            # For the first point we just need index 0
-            layer_thicknesses[ind] = Z_bot[ind]
-        else:
-            # Subtract current depth from previous one to get the change (i.e. the thickness of
-            # each layer)
-            layer_thicknesses[ind] = (Z_bot[ind] - Z_bot[ind-1])
-
-    # We sum the layer thicknesses and corresponding densities, and multiply by gravity to get
-    # Pressure in Pascals
-    pressure = np.sum(layer_thicknesses * rho) * g
-
-    # Convert to Megapascals
-    pressure = pressure * 1e-6
-
-    return pressure
-
-
-def calc_point_rho(depth):
+def calc_point_pressure(depth):
     """
     Calculate the pressure at a given point, assuming that continental crust thickness and layering
     is equivalent to that of Kaban and Mooney, 2001 (see their Eq. 1 and adjacent text).
-    May be worth renaming this to calc_point_pressure because 'rho' is density (KW)
 
     Parameters
     ----------
@@ -646,11 +294,10 @@ def calc_point_rho(depth):
     # gravity = 9.8
 
     # This gives pressure in Pascals, divide by 1e9 to get Gigapascal
-    # Andrew- double check that this is working as intended in the original file, unsure what the
-    # effect of backslash is on BODMAS (KW).
-    pressure = ((upper_crust_thickness * rho_upper_crust) +
-                (lower_crust_thickness * rho_lower_crust) +
-                (upper_mantle_thickness * rho_upper_mantle)) * 9.8
+    
+    pressure = ((upper_crust_thickness * rho_upper_crust) \
+                + (lower_crust_thickness * rho_lower_crust) \
+                + (upper_mantle_thickness * rho_upper_mantle)) * 9.8
     pressure_GPa = pressure / 1e9
 
     return pressure_GPa
@@ -726,225 +373,6 @@ def get_sub_parameters(shared_boundary_sections):
 
     return cross_section_start_points, sub_length, segments, polarity
 
-
-def make_cross_section(forward_distance, back_distance, cross_section_start_points, segments,
-                       polarity):
-    """
-    Given a lat-lon point and two distances, constructs a cross section between the start
-    and end points through the lat-lon point
-
-    Parameters
-    ----------
-    forward_distance : integer or float
-        Forwards distance from the cross section in radians. (Is this not immediately converted
-        into radians? KW)
-    back_distance : integer or float
-        Backwards distance from the cross section in radians (this and forward_distance define the
-        extent of the cross section).
-    cross_section_start_points : numpy.array
-        Input latitude/longitude that defines the cross sections.
-    segments : list of pygplates.GreatCircleArc objects
-        Segments of each subduction zone.
-    polarity : list or array of strings
-        Polarity of subduction zone segments.
-
-    Returns
-    -------
-    new_cross_section_start_points : numpy.array
-        Array of (new) start points for cross sections.
-    cross_section_end_points : numpy.array
-        Array of end points for cross sections. Both this and new_cross_section_start_points should
-        be the same length as the input data.
-
-    """
-
-    # To get our cross section start and end points, we use angular distance to sample our cross
-    # section forwards and backwards from our segment point.
-    angular_distance_forwards = np.radians(forward_distance)
-    angular_distance_backwards = np.radians(back_distance)
-
-    # Replace mid points from previous function with 'new start points'
-    cross_section_end_points = []
-    new_cross_section_start_points = []
-
-    # Loop through points
-    for index in range(len(cross_section_start_points)):
-        # print(index)
-
-        # Legacy code here:
-        # Skip small segments, mainly because they usually occur at edges of subduction zones, and
-        # can then cause issues with overlap
-        # if segments[index].get_arc_length() * pygplates.Earth.mean_radius_in_kms < 25:
-        #     continue
-
-        # Mid point of cross section segment
-        mid_point = pygplates.PointOnSphere(cross_section_start_points[index])
-
-        # Get normal great circle to segment
-        normal = segments[index].get_great_circle_normal().to_normalised()
-
-        # Get the unnormalised vector along the normal from the mid point
-        stage_pole_x, stage_pole_y, stage_pole_z = pygplates.Vector3D.cross(
-                                    mid_point.to_xyz(), normal).to_xyz()
-
-        # Turn vector into a stage pole? i.e., a point on the great cricle
-        stage_pole = pygplates.PointOnSphere(
-                            stage_pole_x, stage_pole_y, stage_pole_z, normalise=True)
-
-        # Normal great circle always to the left of the subduction zone, so have to reverse
-        # print(polarity[index])
-        if polarity[index] == 'Left':
-            subducting_normal_reversal = 1
-        else:
-            # print(index)
-            subducting_normal_reversal = -1
-        # Get the rotation of the stage pole using a set angle to get cross section end point
-        stage_rotation = pygplates.FiniteRotation(stage_pole, angular_distance_forwards *
-                                                  subducting_normal_reversal)
-        # Get cross section end point
-        cross_section_end_point = stage_rotation * mid_point
-        cross_section_end_points.append([cross_section_end_point.to_lat_lon_array()[0][0],
-                                        cross_section_end_point.to_lat_lon_array()[0][1]])
-
-        # Need to extend the start point back a bit, so just multiply by -1 to get the other
-        # direction
-        stage_rotation = pygplates.FiniteRotation(stage_pole, angular_distance_backwards *
-                                                  subducting_normal_reversal * -1)
-        new_cross_section_start_point = stage_rotation * mid_point
-
-        # Append the new start point lat/lons to the list defined earlier
-        new_cross_section_start_points.append(
-            [new_cross_section_start_point.to_lat_lon_array()[0][0],
-             new_cross_section_start_point.to_lat_lon_array()[0][1]])
-
-    cross_section_end_points = np.asarray(cross_section_end_points)
-    new_cross_section_start_points = np.asarray(new_cross_section_start_points)
-
-    # Legacy code here:
-    # now because slabs are in 0–360..
-    # for i in cross_section_end_points[:,1]:
-    #     if i > 180:
-    #         input_lon = input_lon-360
-
-    return new_cross_section_start_points, cross_section_end_points
-
-
-def populate_cross_section(output_data, cross_section_end_points, cross_section_start_points,
-                           steps):
-    """
-    Given a lat-lon point and two distances, constructs a cross section between the start and end
-    points through the lat-lon point for pygmt and rockhunter.
-
-    Parameters
-    ----------
-    output_data : numpy.array
-        Array describing a subducted slab.
-    cross_section_end_points : numpy.array
-        Input latitude and longitude points that define the start of the cross sections.
-    cross_section_start_points : numpy.array
-        Input latitude and longitude points that define the end of the cross sections.
-    steps : integer
-        Number of steps within the cross section between start and end.
-
-    Returns
-    -------
-    cross_section_points : pandas.DataFrame
-        pandas.DataFrame of longitude and latitude (used for pygmt).
-    cross_section_lines : numpy.array
-        Array of latitude and longitude points defining a cross-section.
-    sorted_intersecting_lines : numpy.array
-        Array of lines from a subduction-isochron from a subducted slab that intersect with our
-        cross section (this is where our data is stored).
-
-    """
-
-    # These lines here seem a bit unnecessary (KW)
-    cross_section_end_point = cross_section_end_points[:]
-    cross_section_start_point = cross_section_start_points[:]
-
-    # Define line for the cross section. We need two types of cross section, as unfortunately the
-    # section lines for Slab2.0 and pygmt need to be built in different ways.
-    # Here we start with the Slab2.0 section:
-    cross_section_points = []
-    cross_section_lines = []
-    intersecting_lines = []
-    distance_to_lines = []
-    sorted_intersecting_lines = []
-
-    # Iterate over all cross section start and end points:
-    for ind, (end_point, start_point) in enumerate(zip(cross_section_end_point,
-                                                       cross_section_start_point)):
-        start_lat = start_point[0]
-        start_lon = start_point[1]
-        end_lat = end_point[0]
-        end_lon = end_point[1]
-
-        # Get cross_section line using function described above
-        cross_section_line = cross_section_line_pygplates(start_lat, start_lon,
-                                                          end_lat, end_lon, 0.1)
-
-        # Get the subduction isochrons that intersect the cross section line
-        intersecting_line = []
-        distance_to_line = []
-        # NB this returns the lines in a non-random, but non correct order
-        for ind1, polyline in enumerate(output_data):
-            # Legacy code:
-            # print(ind)
-            # if not polyline:
-            #     continue
-
-            # Get minimum distance between 'iso-sub-chron' and our cross section
-            min_distance_to_feature = pygplates.GeometryOnSphere.distance(
-                polyline[1], cross_section_line)
-
-            # If min distance is 0, then they intersect and we want the rest of the data
-            if min_distance_to_feature == 0:
-                intersecting_line.append(polyline)
-                distance_to_line.append(pygplates.GeometryOnSphere.distance(
-                    polyline[1], pygplates.PointOnSphere([start_lat, start_lon])))
-        # print(distance_to_line)
-        # Now we can order (sort) our lines correctly based on distance to start of cross_section
-        sorted_lines = [x for _, x in sorted(zip(distance_to_line, intersecting_line))]
-
-        # More storage for intersecting lines:
-        new_intersecting_lines = []
-
-        # Already sorted based on distance to present-day subduction zone so the last entry is the
-        # '5' Ma. (I assume that this is derived from output_data? KW)
-        if sorted_lines:
-            # print(len(sorted_lines))
-            # Get present day over-riding and downgoing plate
-            # tmp_overriding_plate = sorted_lines[0][5]  # Never called (KW)
-            tmp_downgoing_plate = sorted_lines[0][6]
-            # Check to make sure that all lines have same downgoing plate
-
-            for sorted_line in sorted_lines:
-                # print(sorted_line[6])
-                # THIS IS IMPORTANT, -2 refers to downgoing plate - think this may be depreciated?
-                # ~KW
-                if sorted_line[6] == tmp_downgoing_plate:
-                    new_intersecting_lines.append(sorted_line)
-        # print(ind, len(sorted_lines), len(new_intersecting_lines))
-        steps = 200
-        lat = np.linspace(start_lat, end_lat, int(steps))
-        lon = np.linspace(start_lon, end_lon, int(steps))
-
-        # pygmt track needs lon/lat as separate columns in pandas DataFrame, so establish a
-        # dictionary here to turn into a DataFrame
-        d = {'lon': lon, 'lat': lat}
-        points = pd.DataFrame(data=d)
-
-        # Shuttle everything into list storage...
-        cross_section_points.append(points)
-        cross_section_lines.append(cross_section_line)
-        intersecting_lines.append(intersecting_line)
-        sorted_intersecting_lines.append(new_intersecting_lines)
-        # sorted_intersecting_lines.append(sorted_lines)
-        distance_to_lines.append(distance_to_line)
-
-    return cross_section_points, cross_section_lines, sorted_intersecting_lines
-
-
 def haversine_formula(lon1, lon2, lat1, lat2):
     """
     Function to get great circle distance between two latitude/longitude points.
@@ -978,91 +406,6 @@ def haversine_formula(lon1, lon2, lat1, lat2):
     return distance
 
 
-def get_distances(intersecting_points, intersecting_depths, tracks):
-    """
-    Returns distance between points on a cross section and in the depth profile.
-
-    Parameters
-    ----------
-    intersecting_points : numpy.array
-        Array of latitude/longitude points.
-    intersecting_depths : numpy.array
-        Array of depths corresponding to each latitude/longitude point.
-    tracks : TYPE  # This parameter is never called in this function (KW)
-        DESCRIPTION.
-
-    Returns
-    -------
-    distance_range : numpy.array
-        Distance of each point in the depth profile.
-    cum_distances : numpy.array
-        Array of cumulative distance from first point to each intersecting line of the cross
-        section.
-    incremental_distances : numpy.array
-        Array of the incremental distance between points in km (i.e., distance between each point)
-        for each intersecting line.
-
-    """
-
-    # Storage...
-    incremental_distances = []
-    cum_distances = []
-    distance_range = []
-
-    for index, point in enumerate(intersecting_points):
-        # print(index)
-        # print(point)
-
-        # Calculate distance as going across cross section. Each cross section has equally placed
-        # points. Two lists here for the incremental distances and the cumulative distance.
-        tmp_incremental_distance = []
-        tmp_cum_distances = []
-
-        for ind, i in enumerate(point):
-            # print(i)
-            if ind == 0:
-                # print(i[1])
-                incremental_distance = 0
-            else:
-                # We need current point, and previous point to get the distance between them
-                incremental_distance = pygplates.GeometryOnSphere.distance(
-                    i[1], intersecting_points[index][ind-1][1])
-
-            # To convert from radians to km we have to multiply by radius, but as we are at depth,
-            # the radius is the distance between Earth's radius and the depth of the point
-            radius = pygplates.Earth.mean_radius_in_kms - intersecting_depths[index][::-1][ind]
-            tmp_incremental_distance.append(incremental_distance*radius)
-            tmp_cum_distances.append(np.sum(tmp_incremental_distance))
-            # print(intersecting_depths[index][-1][::-1][ind], radius, distance, distance*radius)
-
-        # Append those incremental and cumulative distances:
-        incremental_distances.append(tmp_incremental_distance)
-        cum_distances.append(tmp_cum_distances)
-
-        tmp_distance_range = []
-        if len(tracks[index]) < 2:
-            tmp_distance_range.append(1)
-        # print(tracks[index]['lat'])
-        # Use haversine formula (great-circle distance between two points on a sphere) to convert
-        # to km. Get distance, equally spaced so we can define at the start.
-        else:
-            lat1 = tracks[index]['lat'].values[0]
-            lat2 = tracks[index]['lat'].values[1]
-            lon1 = tracks[index]['lon'].values[0]
-            lon2 = tracks[index]['lon'].values[1]
-
-            # Convert decimal degrees to radians
-            lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
-            distance = haversine_formula(lon1, lon2, lat1, lat2)
-            # print(distance)
-            # Get the incremental range:
-            for i in range(tracks[index]['depth'].count()):
-                tmp_distance_range.append(i*distance)
-        distance_range.append(tmp_distance_range)
-
-    return distance_range, cum_distances, incremental_distances
-
-
 def _find_nearest(array, value):
     """
     Find the index in array whose element is nearest to value.
@@ -1085,30 +428,6 @@ def _find_nearest(array, value):
     if array.argmax() == array.size - 1 and value > array.max():
         return 0  # array.size
     return (np.abs(array - value)).argmin()
-
-
-# This is practically the same function as the one before.
-# def _find_nearest_temp(array, value):
-#     """
-#     Find the index in array whose element is nearest to value.
-
-#     Parameters
-#     ----------
-#     array : numpy.array
-#         The array.
-
-#     value : float
-#         The value.
-
-#     Returns
-#     -------
-#     integer
-#         The index in array whose element is nearest to value.
-
-#     """
-#     if array.argmax() == array.size - 1 and value > array.max():
-#         return array.size
-#     return (np.abs(array - value)).argmin()
 
 
 def warp_points(subduction_lats, subduction_lons, rotation_model, subducting_plate_ids,
@@ -1167,6 +486,7 @@ def warp_points(subduction_lats, subduction_lons, rotation_model, subducting_pla
     stage_rotations = np.empty_like(subduction_lats, dtype=object)
 
     # Iterate over the number of points, find the rotated position of each point assuming no dip
+    print(rotation_model)
     for ind in range(len(subduction_lats)):
         # print(subduction_lats[ind],subduction_lons[ind])
         points[ind] = pygplates.PointOnSphere(subduction_lats[ind],
@@ -1174,8 +494,8 @@ def warp_points(subduction_lats, subduction_lons, rotation_model, subducting_pla
         no_dip_points[ind] = pygplates.PointOnSphere(subduction_lats[ind],
                                                      subduction_lons[ind])
         stage_rotations[ind] = rotation_model.get_rotation(
-            subducting_plate_disappearance_times[ind]+time_step,
-            subducting_plate_ids[ind], subducting_plate_disappearance_times[ind])
+            int(subducting_plate_disappearance_times[ind]+time_step),
+            int(subducting_plate_ids[ind]), int(subducting_plate_disappearance_times[ind]))
 
     # Set up some lists to keep information about each individual point:
     point_depths = [0. for point in points]
@@ -1211,9 +531,9 @@ def warp_points(subduction_lats, subduction_lons, rotation_model, subducting_pla
                     subducting_plate_disappearance_time,
                     subducting_plate_ids[ind]))
                 stage_rotations[ind] = rotation_model.get_rotation(
-                    subducting_plate_disappearance_time+time_step,
-                    subducting_plate_ids[ind],
-                    subducting_plate_disappearance_time)
+                    int(subducting_plate_disappearance_time+time_step),
+                    int(subducting_plate_ids[ind]),
+                    int(subducting_plate_disappearance_time))
                 # print('here, 1')
 
             # Else we use the rotation at the current time.
@@ -1221,9 +541,9 @@ def warp_points(subduction_lats, subduction_lons, rotation_model, subducting_pla
                 # The stage rotation that describes the motion of the subducting plate, with
                 # respect to the fixed plate for the rotation model.
                 # print('here, 2')
-                stage_rotations[ind] = rotation_model.get_rotation(warped_time-time_step,
-                                                                   subducting_plate_ids[ind],
-                                                                   warped_time)
+                stage_rotations[ind] = rotation_model.get_rotation(int(warped_time-time_step),
+                                                                   int(subducting_plate_ids[ind]),
+                                                                   int(warped_time))
 
         if use_small_circle_path:  # Still not too sure what this is for (KW)
             stage_poles = np.asarray(list(map(
@@ -1427,7 +747,7 @@ def get_subducted_points(start_time, end_time, time_step, model, grid_filename,
     # If splits are handled, then disappearance times are adjusted.
     if handle_splits:
         plate_disappearance_time_lut = snm.get_plate_disappearance_time_lut(
-            topology_features, rotation_model, times, verbose=False)
+            model.topology_features, model.rotation_model, times, verbose=False)
 
     # Iterate over the timeframe that the subducting points are calculated.
     for reconstruction_time in times:
@@ -1463,19 +783,10 @@ def get_subducted_points(start_time, end_time, time_step, model, grid_filename,
         # obliquity is greater than 90 degrees
         subduction_convergence = np.clip(subduction_convergence, 0, 1e99)
 
-        # Legacy code
-        # dips, vratio, rho_prime, theta_qv, volatile_flux = get_dip(reconstruction_time,
-        #                                                            gdownload, subduction_data)
-        # print(np.shape(dips), np.shape(subduction_lats))
-
         subducting_plate_ids = np.copy(subduction_pids_sub)
         overriding_plate_ids = np.copy(subduction_pids_over)
 
-        # cap dips at 80°
-        # dips[dips > 40] = 40
-
-        # Not too sure what this part does, but I assume it's something to do with the information
-        # stored within the netcdf4 files.
+        # Get variables from NetCDF grids
         lut = []
         if grid_filename is not None:
             for ind, i in enumerate(grid_filename):
@@ -1493,39 +804,7 @@ def get_subducted_points(start_time, end_time, time_step, model, grid_filename,
                     subducting_plate_disappearance_times[
                         index_of_sub_id[0][0]] = plate_disappearance[1]
 
-        # Something to do with the Andes here?
-        if filt:
-            min_lon = -80
-            max_lon = -60
-            min_lat = -40
-            max_lat = -15
-
-            nu_subduction_lons = subduction_lons[np.logical_and(
-                        np.logical_and(min_lon <= subduction_lons, max_lon >= subduction_lons),
-                        np.logical_and(min_lat <= subduction_lats, max_lat >= subduction_lats))]
-            nu_subduction_lats = subduction_lats[np.logical_and(
-                np.logical_and(min_lon <= subduction_lons, max_lon >= subduction_lons),
-                np.logical_and(min_lat <= subduction_lats, max_lat >= subduction_lats))]
-            dips = dips[np.logical_and(np.logical_and(
-                min_lon <= subduction_lons, max_lon >= subduction_lons),
-                np.logical_and(min_lat <= subduction_lats, max_lat >= subduction_lats))]
-            subduction_normals = subduction_normals[np.logical_and(
-                np.logical_and(min_lon <= subduction_lons, max_lon >= subduction_lons),
-                np.logical_and(min_lat <= subduction_lats, max_lat >= subduction_lats))]
-            subducting_plate_ids = subducting_plate_ids[np.logical_and(
-                np.logical_and(min_lon <= subduction_lons, max_lon >= subduction_lons),
-                np.logical_and(min_lat <= subduction_lats, max_lat >= subduction_lats))]
-            overriding_plate_ids = overriding_plate_ids[np.logical_and(
-                np.logical_and(min_lon <= subduction_lons, max_lon >= subduction_lons),
-                np.logical_and(min_lat <= subduction_lats, max_lat >= subduction_lats))]
-            subducting_plate_disappearance_times = (
-                subducting_plate_disappearance_times[np.logical_and(
-                    np.logical_and(min_lon <= subduction_lons, max_lon >= subduction_lons),
-                    np.logical_and(min_lat <= subduction_lats, max_lat >= subduction_lats))])
-
-            subduction_lons = nu_subduction_lons
-            subduction_lats = nu_subduction_lats
-
+       
         # this gets our variables at the lat/lons
         variable_results = []
         if lut is not None:
@@ -1545,7 +824,7 @@ def get_subducted_points(start_time, end_time, time_step, model, grid_filename,
          point_dips,
          point_convergence_rates,
          no_dip_points,
-         distances) = warp_points(subduction_lats, subduction_lons, rotation_model,
+         distances) = warp_points(subduction_lats, subduction_lons, model.rotation_model,
                                   subducting_plate_ids, subduction_normals, reconstruction_time,
                                   end_time, time_step, dips, subducting_plate_disappearance_times)
 
