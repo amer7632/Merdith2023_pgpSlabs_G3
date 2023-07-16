@@ -345,7 +345,7 @@ def warp_points(subduction_lats, subduction_lons, rotation_model, subducting_pla
     stage_rotations = np.empty_like(subduction_lats, dtype=object)
 
     # Iterate over the number of points, find the rotated position of each point assuming no dip
-    print(rotation_model)
+    
     for ind in range(len(subduction_lats)):
         # print(subduction_lats[ind],subduction_lons[ind])
         points[ind] = pygplates.PointOnSphere(subduction_lats[ind],
@@ -461,7 +461,9 @@ def warp_points(subduction_lats, subduction_lons, rotation_model, subducting_pla
 
             # If the velocity is not zero, then we need to figure out where our points have moved
             # to with some vector maths.
+            #, normals[ind])
             else:
+                #print(velocity, normals[ind])
                 normal_angle = pygplates.Vector3D.angle_between(velocity, normals[ind])
                 velocity_normal = np.cos(normal_angle) * velocity.get_magnitude()
                 normal_vector = normals[ind].to_normalised() * velocity_normal
@@ -621,7 +623,7 @@ def get_subducted_points(start_time, end_time, time_step, model, grid_filename,
 
         dataFrame = dipper.tessellate_slab_dip(
             reconstruction_time, tessellation_threshold_radians=tessellation_threshold_radians)
-
+        #print(dataFrame.head())
         # These variables are used:
         subduction_lons = dataFrame['lon'].values
         subduction_lats = dataFrame['lat'].values
@@ -676,7 +678,7 @@ def get_subducted_points(start_time, end_time, time_step, model, grid_filename,
         else:
             # if no grids, just fill the ages with zero
             variable_results = [0. for point in subduction_lons]
-
+        #print(subduction_normals)
         # call main warping function
         (points,
          point_depths,
