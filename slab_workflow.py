@@ -465,8 +465,10 @@ def warp_points(subduction_lats, subduction_lons, rotation_model, subducting_pla
             else:
                 #print(velocity, normals[ind])
                 normal_angle = pygplates.Vector3D.angle_between(velocity, normals[ind])
+                #print(normal_angle)
                 velocity_normal = np.cos(normal_angle) * velocity.get_magnitude()
-                normal_vector = normals[ind].to_normalised() * velocity_normal
+                normal_vector_pygplates = pygplates.Vector3D(normals[ind])
+                normal_vector = normal_vector_pygplates.to_normalised() * velocity_normal
                 # Trench-parallel variables below are never called
                 # parallel_angle = pygplates.Vector3D.angle_between(velocity, parallels[ind])
                 # velocity_parallel = np.cos(parallel_angle) * velocity.get_magnitude()
@@ -631,7 +633,12 @@ def get_subducted_points(start_time, end_time, time_step, model, grid_filename,
         subduction_pids_over = dataFrame['pid_over'].values
         subduction_lengths = dataFrame['length'].values
         subduction_convergence = dataFrame['vel'].values
-        subduction_normals = dataFrame['normals'].values
+        subduction_normal_x = dataFrame['trench_normal_x'].values
+        subduction_normal_y = dataFrame['trench_normal_y'].values
+        subduction_normal_z = dataFrame['trench_normal_z'].values
+        subduction_normals = np.dstack((subduction_normal_x, 
+                                       subduction_normal_y,
+                                       subduction_normal_z))[0]
         dips = dataFrame['slab_dip'].values
 
         # These are not:

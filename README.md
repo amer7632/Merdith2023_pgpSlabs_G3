@@ -28,3 +28,18 @@ https://github.com/amer7632/PlateTectonicTools
 
 https://github.com/amer7632/Slab-Dip
 
+1a/ conda create --name pgpslabs_env
+1b/ conda activate pgpslabs_env
+1c/ conda config --add channels conda-forge
+
+Always pygmt first for some reason (messes with dependencies if you don't). This also installs many of our other libraries (e.g. numpy)
+2/ conda install pygmt
+
+3/ conda install -c conda-forge gplately
+
+4a/ pip install git+https://github.com/amer7632/Slab-Dip.git
+4b/ pip install --no-cache-dir --upgrade git+https://github.com/EarthByte/PlateTectonicTools
+
+(NB both 4a and 4b must overwrite existing slabdip or PTT)
+
+5/ run notebooks
